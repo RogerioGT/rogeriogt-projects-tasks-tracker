@@ -1,6 +1,11 @@
 """FastAPI application entrypoint."""
+import os
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from .db import Base, SessionLocal, engine
 from .routers import boards, tasks
@@ -21,6 +26,11 @@ app.add_middleware(
 app.include_router(boards.router)
 app.include_router(tasks.router)
 
+# Serve the built frontend if present (SPA). Falls back to API root otherwise.
+_FRONTEND_DIR = Path(os.environ.get("FRONTEND_DIR", "/app/frontend/dist"))
+if _FRONTEND_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=_FRONTEND_DIR / "assets"), name="assets")
+
 
 @app.on_event("startup")
 def _seed_on_startup():
@@ -38,4 +48,7 @@ def health():
 
 @app.get("/")
 def root():
+    index = _FRONTEND_DIR / "index.html"
+    if index.is_file():
+        return FileResponse(index)
     return {"app": "Rogerio Projects & Tasks Tracker", "docs": "/docs", "api": "/api"}

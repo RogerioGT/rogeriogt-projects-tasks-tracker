@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Density + theme variables — per AGENTS.md */
+:root {
+  --font-size: 11px;
+  --row-h: 28px;
+  --pad: 4px;
+  --pad-sm: 2px;
+  --border: #2a2a2a;
+  --border-strong: #333;
+  --bg: #0f1115;
+  --bg-surface: #161a22;
+  --bg-elevated: #1c212e;
+  --bg-hover: #222836;
+  --text: #e5e7eb;
+  --text-muted: #9ca3af;
+  --text-faint: #6b7280;
+}
+
+[data-density="cozy"] {
+  --font-size: 13px;
+  --row-h: 36px;
+  --pad: 8px;
+  --pad-sm: 4px;
+}
+
+[data-theme="light"] {
+  --bg: #f4f4f5;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f9fafb;
+  --bg-hover: #eef2f7;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+  --text: #111827;
+  --text-muted: #6b7280;
+  --text-faint: #9ca3af;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #374151 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--font-size);
+  line-height: 1.4;
+  font-family: ui-sans-system, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+/* Focus ring */
+:focus-visible {
+  outline: 1px solid #3b82f6;
+  outline-offset: 1px;
+}

@@ -1,0 +1,11 @@
+services:
+  tasks-tracker:
+    build: .
+    container_name: rogeriogt-tasks-tracker
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATA_DIR=/app/data
+    restart: unless-stopped

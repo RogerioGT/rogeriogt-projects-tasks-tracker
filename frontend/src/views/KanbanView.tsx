@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchBoards, fetchTasks, updateTask, Task } from "../api";
+import { fetchTasks, updateTask, Task } from "../api";
 import { useI18n } from "../i18n";
+import FilterBar, { EMPTY_FILTERS, Filters, filtersToQuery } from "../components/FilterBar";
 
 const statuses: Task["status"][] = ["not_started", "in_progress", "waiting", "done"];
 const statusColor: Record<string, string> = {
@@ -14,14 +15,10 @@ const statusColor: Record<string, string> = {
 export default function KanbanView({ search }: { search: string }) {
   const { t } = useI18n();
   const qc = useQueryClient();
-  const { data: boards } = useQuery({ queryKey: ["boards", "flat"], queryFn: fetchBoards });
-  const [selectedBoard, setSelectedBoard] = useState<string>("");
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const { data: tasks } = useQuery({
-    queryKey: ["tasks", "kanban", selectedBoard, search],
-    queryFn: () => {
-      if (selectedBoard) return fetchTasks({ board_id: selectedBoard, include_descendants: true, search: search || undefined });
-      return fetchTasks({ search: search || undefined });
-    },
+    queryKey: ["tasks", "kanban", filters, search],
+    queryFn: () => fetchTasks({ ...filtersToQuery(filters), search: search || undefined }),
   });
 
   const updateMut = useMutation({
@@ -41,19 +38,8 @@ export default function KanbanView({ search }: { search: string }) {
 
   return (
     <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 8, height: "100%" }}>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <select
-          value={selectedBoard}
-          onChange={(e) => setSelectedBoard(e.target.value)}
-          style={{ fontSize: 11, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 4, background: "var(--bg-surface)", color: "var(--text)" }}
-        >
-          <option value="">{t("allBoards")}</option>
-          {(boards || []).map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+        <FilterBar filters={filters} onChange={setFilters} />
         <span style={{ fontSize: 10, color: "var(--text-faint)" }}>{(tasks || []).length} tasks</span>
       </div>
 

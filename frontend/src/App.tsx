@@ -9,6 +9,7 @@ import CompactView from "./views/CompactView";
 import DashboardView from "./views/DashboardView";
 import HistoryView from "./views/HistoryView";
 import AccountDialog from "./components/AccountDialog";
+import AdminPanel from "./components/AdminPanel";
 
 type ViewKey = "board" | "kanban" | "list" | "compact" | "dashboard" | "history";
 
@@ -30,6 +31,7 @@ function TopBar({
   const { t, locale, setLocale } = useI18n();
   const { user } = useAuth();
   const [accountOpen, setAccountOpen] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
   const [density, setDensity] = useState<"compact" | "cozy">(
     () => (localStorage.getItem("density") as "compact" | "cozy") || "compact",
   );
@@ -164,6 +166,24 @@ function TopBar({
           {theme === "dark" ? "Dark" : "Light"}
         </button>
 
+        {user?.is_admin && (
+          <button
+            onClick={() => setAdminOpen(!adminOpen)}
+            title={t("settings")}
+            style={{
+              fontSize: 11,
+              padding: "3px 8px",
+              border: "1px solid var(--border)",
+              borderRadius: 4,
+              background: "var(--bg-elevated)",
+              color: "var(--text)",
+              cursor: "pointer",
+            }}
+          >
+            ⚙
+          </button>
+        )}
+
         <button
           onClick={() => setAccountOpen(!accountOpen)}
           title={t("account")}
@@ -183,6 +203,11 @@ function TopBar({
         {accountOpen && (
           <div style={{ position: "absolute", top: 40, right: 10, zIndex: 60 }} onClick={() => setAccountOpen(false)}>
             <AccountDialog onClose={() => setAccountOpen(false)} />
+          </div>
+        )}
+        {adminOpen && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }} onClick={() => setAdminOpen(false)}>
+            <AdminPanel onClose={() => setAdminOpen(false)} />
           </div>
         )}
       </div>

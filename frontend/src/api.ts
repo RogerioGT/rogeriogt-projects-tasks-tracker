@@ -86,15 +86,42 @@ export type User = {
   name: string;
   locale: string;
   is_active: boolean;
+  is_admin: boolean;
   created_at: string;
 };
 
 export type Share = {
   id: string;
   board_id: string;
-  user_id: string;
+  user_id: string | null;
+  team_id: string | null;
   permission: "view" | "edit";
   created_at: string;
+};
+
+export type TaskShare = {
+  id: string;
+  task_id: string;
+  user_id: string | null;
+  team_id: string | null;
+  permission: "view" | "edit";
+  created_at: string;
+};
+
+export type TeamMember = {
+  id: string;
+  team_id: string;
+  user_id: string;
+  role: "member" | "admin";
+  created_at: string;
+};
+
+export type Team = {
+  id: string;
+  name: string;
+  created_by: string | null;
+  created_at: string;
+  members: TeamMember[];
 };
 
 /* Boards */
@@ -204,12 +231,69 @@ export function fetchUsers() {
 export function fetchAcl(boardId: string) {
   return req<Share[]>(`/boards/${boardId}/acl`);
 }
-export function shareBoard(boardId: string, payload: { user_id: string; permission: "view" | "edit" }) {
+export function shareBoard(boardId: string, payload: { user_id?: string | null; team_id?: string | null; permission: "view" | "edit" }) {
   return req<Share>(`/boards/${boardId}/acl`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
-export function unshareBoard(boardId: string, userId: string) {
-  return req<void>(`/boards/${boardId}/acl/${userId}`, { method: "DELETE" });
+export function unshareBoard(boardId: string, aclId: string) {
+  return req<void>(`/boards/${boardId}/acl/${aclId}`, { method: "DELETE" });
+}
+
+/* Task sharing */
+export function fetchTaskAcl(taskId: string) {
+  return req<TaskShare[]>(`/tasks/${taskId}/acl`);
+}
+export function shareTask(taskId: string, payload: { user_id?: string | null; team_id?: string | null; permission: "view" | "edit" }) {
+  return req<TaskShare>(`/tasks/${taskId}/acl`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+export function unshareTask(taskId: string, aclId: string) {
+  return req<void>(`/tasks/${taskId}/acl/${aclId}`, { method: "DELETE" });
+}
+export function shareTasksBatch(taskIds: string[], payload: { user_id?: string | null; team_id?: string | null; permission: "view" | "edit" }) {
+  return req<{ created: number; updated: number }>(`/tasks/share`, {
+    method: "POST",
+    body: JSON.stringify({ task_ids: taskIds, ...payload }),
+  });
+}
+
+/* Teams */
+export function fetchTeams() {
+  return req<Team[]>("/teams");
+}
+export function createTeam(name: string) {
+  return req<Team>("/teams", { method: "POST", body: JSON.stringify({ name }) });
+}
+export function renameTeam(id: string, name: string) {
+  return req<Team>(`/teams/${id}`, { method: "PATCH", body: JSON.stringify({ name }) });
+}
+export function deleteTeam(id: string) {
+  return req<void>(`/teams/${id}`, { method: "DELETE" });
+}
+export function addTeamMember(teamId: string, userId: string, role: "member" | "admin" = "member") {
+  return req<TeamMember>(`/teams/${teamId}/members`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, role }),
+  });
+}
+export function removeTeamMember(teamId: string, userId: string) {
+  return req<void>(`/teams/${teamId}/members/${userId}`, { method: "DELETE" });
+}
+
+/* Admin user management */
+export function adminCreateUser(payload: { email: string; name?: string; password: string; is_admin?: boolean }) {
+  return req<User>("/auth/users", { method: "POST", body: JSON.stringify(payload) });
+}
+export function adminUpdateUser(userId: string, payload: { name?: string; is_active?: boolean; is_admin?: boolean; password?: string }) {
+  return req<User>(`/auth/users/${userId}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+export function changePassword(currentPassword: string, newPassword: string) {
+  return req<void>("/auth/change-password", {
+    method: "POST",
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
 }

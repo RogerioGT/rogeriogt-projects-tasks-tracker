@@ -20,6 +20,7 @@ import urllib.parse
 from mcp.server import mcpserver
 
 API_BASE = os.environ.get("TASKS_API_URL", "http://localhost:8787")
+API_TOKEN = os.environ.get("TASKS_API_TOKEN", "")
 
 
 # ---------------------------------------------------------------------------
@@ -30,6 +31,8 @@ def _request(method: str, path: str, payload: dict | None = None) -> dict | list
     url = f"{API_BASE}{path}"
     data = None
     headers = {"Accept": "application/json"}
+    if API_TOKEN:
+        headers["Authorization"] = f"Bearer {API_TOKEN}"
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
@@ -245,6 +248,156 @@ def add_board(
 def dashboard_stats() -> dict:
     """Return task counts by status and overall completion rate."""
     return _get("/api/tasks/stats/summary")
+
+
+# ---------------------------------------------------------------------------
+# Phase 13 — admin & sharing tools
+# ---------------------------------------------------------------------------
+
+def _resolve_user(name_or_email_or_id: str) -> dict:
+    users = _get("/api/auth/users")
+    if not isinstance(users, list):
+        raise RuntimeError("Unexpected users response from API")
+    for u in users:
+        if u.get("id") == name_or_email_or_id:
+            return u
+    matches = [u for u in users if u.get("email", "").lower() == name_or_email_or_id.lower()
+               or u.get("name", "").lower() == name_or_email_or_id.lower()]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise RuntimeError(f"Multiple users match '{name_or_email_or_id}'.")
+    raise RuntimeError(f"No user found matching '{name_or_email_or_id}'.")
+
+
+def _resolve_team(name_or_id: str) -> dict:
+    teams = _get("/api/teams")
+    if not isinstance(teams, list):
+        raise RuntimeError("Unexpected teams response from API")
+    for team in teams:
+        if team.get("id") == name_or_id:
+            return team
+    matches = [team for team in teams if team.get("name", "").lower() == name_or_id.lower()]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise RuntimeError(f"Multiple teams match '{name_or_id}'.")
+    raise RuntimeError(f"No team found matching '{name_or_id}'.")
+
+
+@mcp.tool(description="Rename or recolor a board (company/project/section).")
+def update_board(board: str, name: str | None = None, color: str | None = None) -> dict:
+    """board is a board name or id. Only provided fields change."""
+    b = _resolve_board(board)
+    payload = {}
+    if name is not None:
+        payload["name"] = name
+    if color is not None:
+        payload["color"] = color
+    if not payload:
+        raise RuntimeError("Provide name and/or color.")
+    return _patch(f"/api/boards/{b['id']}", payload)
+
+
+@mcp.tool(description="Delete a board and everything under it (projects, tasks).")
+def delete_board(board: str) -> dict:
+    """board is a board name or id. Destructive; removes descendants."""
+    b = _resolve_board(board)
+    _delete(f"/api/boards/{b['id']}")
+    return {"deleted": b["id"], "name": b["name"]}
+
+
+@mcp.tool(description="List all users (admin only in production mode).")
+def list_users() -> dict:
+    """Return users with email, name, active, admin flags."""
+    users = _get("/api/auth/users")
+    return {"users": users}
+
+
+@mcp.tool(description="Create a new user account (admin only).")
+def add_user(email: str, password: str, name: str = "", is_admin: bool = False) -> dict:
+    """The new user logs in with email + password."""
+    return _post("/api/auth/users", {"email": email, "password": password, "name": name, "is_admin": is_admin})
+
+
+@mcp.tool(description="Activate, deactivate, or toggle admin for a user (admin only).")
+def set_user_flags(user: str, is_active: bool | None = None, is_admin: bool | None = None) -> dict:
+    """user is a name, email, or id. Only provided flags change."""
+    u = _resolve_user(user)
+    payload = {}
+    if is_active is not None:
+        payload["is_active"] = is_active
+    if is_admin is not None:
+        payload["is_admin"] = is_admin
+    if not payload:
+        raise RuntimeError("Provide is_active and/or is_admin.")
+    return _patch(f"/api/auth/users/{u['id']}", payload)
+
+
+@mcp.tool(description="List all teams with their members (admin only).")
+def list_teams() -> dict:
+    teams = _get("/api/teams")
+    return {"teams": teams}
+
+
+@mcp.tool(description="Create a new team (admin only).")
+def add_team(name: str) -> dict:
+    return _post("/api/teams", {"name": name})
+
+
+@mcp.tool(description="Add a user to a team (admin only).")
+def add_team_member(team: str, user: str, role: str = "member") -> dict:
+    """role: member | admin. team and user accept names, emails, or ids."""
+    team_obj = _resolve_team(team)
+    user_obj = _resolve_user(user)
+    return _post(f"/api/teams/{team_obj['id']}/members", {"user_id": user_obj["id"], "role": role})
+
+
+@mcp.tool(description="Share a board subtree (project, company, or section) with a user or team.")
+def share_board(board: str, user: str | None = None, team: str | None = None, permission: str = "edit") -> dict:
+    """Provide user OR team (name/email/id). Sharing inherits down the tree."""
+    b = _resolve_board(board)
+    payload = {"permission": permission}
+    if user:
+        payload["user_id"] = _resolve_user(user)["id"]
+    elif team:
+        payload["team_id"] = _resolve_team(team)["id"]
+    else:
+        raise RuntimeError("Provide user or team.")
+    return _post(f"/api/boards/{b['id']}/acl", payload)
+
+
+@mcp.tool(description="Remove a board share (by ACL id; see share_board result or list acl).")
+def unshare_board(board: str, acl_id: str) -> dict:
+    b = _resolve_board(board)
+    _delete(f"/api/boards/{b['id']}/acl/{acl_id}")
+    return {"removed": acl_id}
+
+
+@mcp.tool(description="Share a single task with a user or team.")
+def share_task(task_id: str, user: str | None = None, team: str | None = None, permission: str = "edit") -> dict:
+    """Provide user OR team (name/email/id)."""
+    payload = {"permission": permission}
+    if user:
+        payload["user_id"] = _resolve_user(user)["id"]
+    elif team:
+        payload["team_id"] = _resolve_team(team)["id"]
+    else:
+        raise RuntimeError("Provide user or team.")
+    return _post(f"/api/tasks/{task_id}/acl", payload)
+
+
+@mcp.tool(description="Share a selected list of task ids with a user or team in one call.")
+def share_tasks(task_ids: list[str], user: str | None = None, team: str | None = None, permission: str = "edit") -> dict:
+    """task_ids is a list of task ids. Provide user OR team."""
+    payload = {"task_ids": task_ids, "permission": permission}
+    if user:
+        payload["user_id"] = _resolve_user(user)["id"]
+    elif team:
+        payload["team_id"] = _resolve_team(team)["id"]
+    else:
+        raise RuntimeError("Provide user or team.")
+    return _post("/api/tasks/share", payload)
 
 
 if __name__ == "__main__":

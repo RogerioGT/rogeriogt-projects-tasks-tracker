@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchBoards, fetchTasks, createTask, toggleComplete, Task } from "../api";
 import { useI18n } from "../i18n";
+import FilterBar, { EMPTY_FILTERS, Filters, filtersToQuery } from "../components/FilterBar";
 
 const priorityDot: Record<string, string> = { high: "#ef4444", medium: "#f97316", low: "#3b82f6", none: "#6b7280" };
 
@@ -10,10 +11,11 @@ export default function CompactView({ search }: { search: string }) {
   const qc = useQueryClient();
   const { data: boards } = useQuery({ queryKey: ["boards", "flat"], queryFn: fetchBoards });
   const boardName = new Map((boards || []).map((b) => [b.id, b.name]));
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
 
   const { data: tasks } = useQuery({
-    queryKey: ["tasks", "compact", search],
-    queryFn: () => fetchTasks({ search: search || undefined, sort: "created_at" }),
+    queryKey: ["tasks", "compact", search, filters],
+    queryFn: () => fetchTasks({ ...filtersToQuery(filters), search: search || undefined, sort: "created_at" }),
   });
 
   const [title, setTitle] = useState("");
@@ -43,6 +45,9 @@ export default function CompactView({ search }: { search: string }) {
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <FilterBar filters={filters} onChange={setFilters} />
+      </div>
       <form onSubmit={handleAdd} style={{ display: "flex", gap: 6, position: "sticky", top: 0, background: "var(--bg)", padding: "6px 0", zIndex: 1 }}>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("newTaskPlaceholder")} style={{ flex: 1, fontSize: 11, padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 4, background: "var(--bg-surface)", color: "var(--text)" }} />
         <select value={effectiveBoard} onChange={(e) => setTargetBoard(e.target.value)} style={{ fontSize: 11, padding: "6px 8px", border: "1px solid var(--border)", borderRadius: 4, background: "var(--bg-surface)", color: "var(--text)" }}>

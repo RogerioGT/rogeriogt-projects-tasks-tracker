@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, SortingState, useReactTable } from "@tanstack/react-table";
 import { fetchBoards, fetchTasks, toggleComplete, Task } from "../api";
 import { useI18n } from "../i18n";
+import FilterBar, { EMPTY_FILTERS, Filters, filtersToQuery } from "../components/FilterBar";
 
 const priorityColor: Record<string, string> = { high: "#ef4444", medium: "#f97316", low: "#3b82f6", none: "#6b7280" };
 
@@ -10,9 +11,7 @@ export default function ListView({ search }: { search: string }) {
   const { t } = useI18n();
   const qc = useQueryClient();
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState("");
-  const [assigneeFilter, setAssigneeFilter] = useState("");
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
 
   const { data: boards } = useQuery({ queryKey: ["boards", "flat"], queryFn: fetchBoards });
   const boardName = useMemo(() => {
@@ -22,13 +21,11 @@ export default function ListView({ search }: { search: string }) {
   }, [boards]);
 
   const { data: tasks } = useQuery({
-    queryKey: ["tasks", "list", search, statusFilter, priorityFilter, assigneeFilter],
+    queryKey: ["tasks", "list", search, filters],
     queryFn: () =>
       fetchTasks({
+        ...filtersToQuery(filters),
         search: search || undefined,
-        status: statusFilter || undefined,
-        priority: priorityFilter || undefined,
-        assignee: assigneeFilter || undefined,
         sort: "created_at",
       }),
   });
@@ -93,21 +90,7 @@ export default function ListView({ search }: { search: string }) {
   return (
     <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={selStyle}>
-          <option value="">{t("status")}: all</option>
-          <option value="not_started">{t("not_started")}</option>
-          <option value="in_progress">{t("in_progress")}</option>
-          <option value="waiting">{t("waiting")}</option>
-          <option value="done">{t("done")}</option>
-        </select>
-        <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} style={selStyle}>
-          <option value="">{t("priority")}: all</option>
-          <option value="high">{t("high")}</option>
-          <option value="medium">{t("medium")}</option>
-          <option value="low">{t("low")}</option>
-          <option value="none">{t("none")}</option>
-        </select>
-        <input value={assigneeFilter} onChange={(e) => setAssigneeFilter(e.target.value)} placeholder={t("assignee")} style={inpStyle} />
+        <FilterBar filters={filters} onChange={setFilters} />
         <span style={{ fontSize: 10, color: "var(--text-faint)" }}>{rows.length} tasks</span>
       </div>
 

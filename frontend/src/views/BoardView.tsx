@@ -24,11 +24,13 @@ function TaskRow({
   onToggle,
   onUpdate,
   onDelete,
+  onShare,
 }: {
   task: Task;
   onToggle: () => void;
   onUpdate: (patch: Partial<Task>) => void;
   onDelete: () => void;
+  onShare: () => void;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -143,6 +145,7 @@ function TaskRow({
           </div>
           <input value={editTags} onChange={(e) => setEditTags(e.target.value)} placeholder={t("tags") + " (comma separated)"} style={inputStyle} />
           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+            <button onClick={onShare} style={{ ...btnStyle }}>{t("share")}</button>
             <button onClick={onDelete} style={{ ...btnStyle, color: "#ef4444", borderColor: "#ef444455" }}>{t("delete")}</button>
             <button onClick={() => setOpen(false)} style={btnStyle}>{t("cancel")}</button>
             <button onClick={save} style={{ ...btnStyle, background: "#3b82f6", color: "#fff", borderColor: "#3b82f6" }}>{t("save")}</button>
@@ -191,6 +194,7 @@ function Column({
   const [showCompleted, setShowCompleted] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [taskShareId, setTaskShareId] = useState<string>("");
   const [editName, setEditName] = useState(board.name);
   const [editColor, setEditColor] = useState(board.color);
 
@@ -311,14 +315,14 @@ function Column({
                   const task = active[vi.index];
                   return (
                     <div key={task.id} style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vi.start}px)`, paddingBottom: 4 }}>
-                      <TaskRow task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} />
+                      <TaskRow task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} />
                     </div>
                   );
                 })}
               </div>
             ) : (
               active.map((task) => (
-                <TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} />
+                <TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} />
               ))
             )}
           </div>
@@ -328,7 +332,7 @@ function Column({
               <button onClick={() => setShowCompleted(!showCompleted)} style={{ fontSize: 10, color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer", width: "100%", textAlign: "left", padding: "2px 0" }}>
                 {showCompleted ? "▾" : "▸"} {t("completed")} ({done.length})
               </button>
-              {showCompleted && <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4, opacity: 0.75 }}>{done.map((task) => (<TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} />))}</div>}
+              {showCompleted && <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4, opacity: 0.75 }}>{done.map((task) => (<TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} />))}</div>}
             </div>
           )}
         </>
@@ -336,7 +340,13 @@ function Column({
 
       {shareOpen && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setShareOpen(false)}>
-          <ShareDialog boardId={board.id} boardName={board.name} onClose={() => setShareOpen(false)} />
+          <ShareDialog scope={{ type: "board", boardId: board.id, boardName: board.name }} onClose={() => setShareOpen(false)} />
+        </div>
+      )}
+
+      {taskShareId && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setTaskShareId("")}>
+          <ShareDialog scope={{ type: "task", taskIds: [taskShareId], label: "" }} onClose={() => setTaskShareId("")} />
         </div>
       )}
     </div>

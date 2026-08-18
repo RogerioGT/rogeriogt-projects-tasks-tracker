@@ -3,7 +3,7 @@
 Lets Hermes drive the task board from chat. Type "add task X to eyegenerate.com"
 and the MCP tools resolve the board name and create the task.
 
-## What it exposes
+## What it exposes (21 tools)
 
 | Tool | What it does |
 |------|--------------|
@@ -15,14 +15,29 @@ and the MCP tools resolve the board name and create the task.
 | `move_task` | Move to another board |
 | `delete_task` | Delete |
 | `add_board` | New section / company / project |
+| `update_board` | Rename or recolor a board |
+| `delete_board` | Delete a board + everything under it |
 | `dashboard_stats` | Counts + completion rate |
+| `list_users` / `add_user` / `set_user_flags` | Admin user management |
+| `list_teams` / `add_team` / `add_team_member` | Admin team management |
+| `share_board` / `unshare_board` | Share a board subtree with a user or team |
+| `share_task` / `share_tasks` | Share one task or a batch with a user or team |
 
 ## How it works
 
 - Talks to the backend REST API at `http://localhost:8787` (stdlib `urllib`, no HTTP dep).
 - Board names are resolved case-insensitively (exact, then partial), so chat can
   say "Personal Projects" or just "eyegenerate" and it lands on the right board.
+- Users resolve by name, email, or id. Teams by name or id.
 - Uses the `mcp` SDK v2 (`mcp.server.mcpserver.MCPServer`).
+
+## Env vars
+
+- `TASKS_API_URL` (default `http://localhost:8787`) — override if the backend
+  moves ports or goes to a subdomain.
+- `TASKS_API_TOKEN` — Bearer token for the production server (auth is mandatory
+  there). Get one via `POST /api/auth/login` with the admin credentials.
+  Example: `TASKS_API_URL=https://tasksmgr.rogeriogt.com TASKS_API_TOKEN=...`
 
 ## Setup (already done on this machine)
 
@@ -43,8 +58,3 @@ cd mcp_server
 ```bash
 hermes mcp test tasks_tracker
 ```
-
-## Env vars
-
-- `TASKS_API_URL` (default `http://localhost:8787`) — override if the backend
-  moves ports or goes to a subdomain.

@@ -6,10 +6,11 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..deps import get_current_user
 from ..models import Board, Event, Task
 from ..schemas import TaskCreate, TaskMove, TaskOut, TaskUpdate
 
-router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+router = APIRouter(prefix="/api/tasks", tags=["tasks"], dependencies=[Depends(get_current_user)])
 
 SORTABLE = {"created_at", "updated_at", "due_date", "priority", "status", "position", "title"}
 

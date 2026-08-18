@@ -11,6 +11,7 @@ from .db import Base, SessionLocal, engine
 from .routers import boards, tasks, events, auth, sharing
 from .seed import seed
 from .migrations import run_migrations
+from .routers.auth import bootstrap_admin
 
 Base.metadata.create_all(bind=engine)
 run_migrations()
@@ -42,6 +43,7 @@ def _seed_on_startup():
     db = SessionLocal()
     try:
         seed(db)
+        bootstrap_admin(db)
     finally:
         db.close()
 

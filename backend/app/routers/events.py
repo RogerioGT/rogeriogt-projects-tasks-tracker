@@ -8,10 +8,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..deps import get_current_user
 from ..models import Event
 from ..schemas import EventOut
 
-router = APIRouter(prefix="/api/events", tags=["events"])
+router = APIRouter(prefix="/api/events", tags=["events"], dependencies=[Depends(get_current_user)])
 
 
 @router.get("", response_model=list[EventOut])

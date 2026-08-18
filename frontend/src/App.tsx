@@ -193,6 +193,20 @@ function TopBar({
 function AppInner() {
   const [view, setView] = useState<ViewKey>("board");
   const [search, setSearch] = useState("");
+  const { user, loading, required } = useAuth();
+
+  if (loading) {
+    return <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", color: "var(--text-muted)", fontSize: 12 }}>Loading...</div>;
+  }
+
+  // Required mode with no session → full-screen login gate.
+  if (required && !user) {
+    return (
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)" }}>
+        <AccountDialog onClose={() => {}} />
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden", background: "var(--bg)" }}>

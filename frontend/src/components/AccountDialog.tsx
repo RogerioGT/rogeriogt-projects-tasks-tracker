@@ -24,7 +24,7 @@ const btnStyle: React.CSSProperties = {
 
 export default function AccountDialog({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
-  const { user, login, register, logout } = useAuth();
+  const { user, required, login, register, logout } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -63,9 +63,11 @@ export default function AccountDialog({ onClose }: { onClose: () => void }) {
       <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t("password")} style={inputStyle} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
       {error && <div style={{ fontSize: 10, color: "#ef4444" }}>{error}</div>}
       <button onClick={submit} style={{ ...btnStyle, background: "#3b82f6", color: "#fff", borderColor: "#3b82f6" }}>{mode === "login" ? t("login") : t("register")}</button>
-      <button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }} style={{ ...btnStyle, background: "transparent" }}>
-        {mode === "login" ? t("noAccount") : t("haveAccount")}
-      </button>
+      {!required && (
+        <button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }} style={{ ...btnStyle, background: "transparent" }}>
+          {mode === "login" ? t("noAccount") : t("haveAccount")}
+        </button>
+      )}
     </div>
   );
 }

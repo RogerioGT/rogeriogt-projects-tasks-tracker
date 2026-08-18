@@ -1,10 +1,12 @@
-"""Auth router: register, login, me, list users."""
+"""Auth router: register, login, me, list users, bootstrap admin."""
+import os
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..deps import get_current_user
+from ..deps import REQUIRE_AUTH, get_current_user
 from ..models import User
 from ..schemas import AuthResponse, LoginIn, RegisterIn, UserOut
 from ..security import create_token, hash_password, verify_password
@@ -12,8 +14,31 @@ from ..security import create_token, hash_password, verify_password
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
+def bootstrap_admin(db: Session) -> None:
+    """Create the admin account from env vars if no real (password-bearing) user exists."""
+    if db.scalars(select(User).where(User.password_hash.isnot(None))).first():
+        return
+    email = os.environ.get("ADMIN_EMAIL", "admin@rogeriogt.com").strip().lower()
+    password = os.environ.get("ADMIN_PASSWORD")
+    if not password:
+        return  # nothing to do until credentials are supplied
+    db.add(User(
+        email=email,
+        name=os.environ.get("ADMIN_NAME", "Admin"),
+        password_hash=hash_password(password),
+    ))
+    db.commit()
+
+
+@router.get("/required")
+def auth_required():
+    return {"required": REQUIRE_AUTH}
+
+
 @router.post("/register", response_model=AuthResponse, status_code=201)
 def register(payload: RegisterIn, db: Session = Depends(get_db)):
+    if REQUIRE_AUTH:
+        raise HTTPException(403, "registration is closed; contact the admin")
     email = payload.email.strip().lower()
     if db.scalars(select(User).where(User.email == email)).first():
         raise HTTPException(409, "email already registered")

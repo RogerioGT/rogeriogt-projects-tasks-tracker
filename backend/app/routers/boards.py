@@ -4,10 +4,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
+from ..deps import get_current_user
 from ..models import Board, Event
 from ..schemas import BoardCreate, BoardOut, BoardUpdate
 
-router = APIRouter(prefix="/api/boards", tags=["boards"])
+router = APIRouter(prefix="/api/boards", tags=["boards"], dependencies=[Depends(get_current_user)])
 
 
 def _log(db: Session, entity: str, eid: str, action: str, field=None, old=None, new=None):

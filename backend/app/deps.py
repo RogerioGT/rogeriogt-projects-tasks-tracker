@@ -1,16 +1,22 @@
-"""FastAPI dependencies: optional current-user resolution.
+"""FastAPI dependencies: current-user resolution.
 
-The app runs single-user by default with no login (a "local" pseudo-user).
-If an Authorization: Bearer token is present and valid, resolve the real user;
-otherwise fall back to the local user so localhost stays frictionless.
+Two modes:
+- Local (default): no login required. Falls back to a "local" pseudo-user so
+  localhost stays frictionless.
+- Required (REQUIRE_AUTH=true): every request needs a valid Bearer token;
+  otherwise a 401 is raised and the frontend shows the login screen.
 """
-from fastapi import Depends, Header
+import os
+
+from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .db import get_db
 from .models import User
 from .security import verify_token
+
+REQUIRE_AUTH = os.environ.get("REQUIRE_AUTH", "false").lower() in ("1", "true", "yes")
 
 LOCAL_USER_ID = "00000000-0000-0000-0000-000000000000"
 LOCAL_USER_EMAIL = "local@rogeriogt"
@@ -20,7 +26,11 @@ def get_current_user(
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> User:
-    """Resolve the acting user. Bearer token wins; else the local pseudo-user."""
+    """Resolve the acting user.
+
+    Bearer token wins. In local mode, fall back to the local pseudo-user.
+    In required mode, reject anonymous requests with 401.
+    """
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization[7:].strip()
         user_id = verify_token(token)
@@ -29,7 +39,10 @@ def get_current_user(
             if user and user.is_active:
                 return user
 
-    # Fall back to the local pseudo-user (ensure it exists).
+    if REQUIRE_AUTH:
+        raise HTTPException(401, "login required")
+
+    # Local mode: fall back to the local pseudo-user (ensure it exists).
     local = db.get(User, LOCAL_USER_ID)
     if local is None:
         local = User(

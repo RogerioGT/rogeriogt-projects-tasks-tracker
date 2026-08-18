@@ -66,19 +66,21 @@ function TopBar({
         minHeight: 36,
         display: "flex",
         alignItems: "center",
-        flexWrap: "wrap",
-        gap: 4,
+        flexWrap: "nowrap",
+        gap: 6,
         padding: "4px 10px",
         borderBottom: "1px solid var(--border)",
         background: "var(--bg-surface)",
         position: "sticky",
         top: 0,
         zIndex: 20,
+        overflowX: "auto",
+        overflowY: "hidden",
       }}
     >
-      <div style={{ fontWeight: 700, fontSize: 11, letterSpacing: 0.3, whiteSpace: "nowrap" }}>{t("appTitle")}</div>
+      <div className="app-title" style={{ fontWeight: 700, fontSize: 11, letterSpacing: 0.3, whiteSpace: "nowrap", flexShrink: 0 }}>{t("appTitle")}</div>
 
-      <div style={{ display: "flex", gap: 2, marginLeft: 12, overflowX: "auto", maxWidth: "100%", flexShrink: 1 }}>
+      <div style={{ display: "flex", gap: 2, marginLeft: 8, flexShrink: 0 }}>
         {views.map((v) => (
           <button
             key={v.key}
@@ -93,6 +95,7 @@ function TopBar({
               borderColor: view === v.key ? "var(--border-strong)" : "transparent",
               cursor: "pointer",
               fontWeight: view === v.key ? 600 : 400,
+              whiteSpace: "nowrap",
             }}
           >
             {v.label}
@@ -100,7 +103,7 @@ function TopBar({
         ))}
       </div>
 
-      <div style={{ flex: 1 }} />
+      <div style={{ flex: "1 0 16px", minWidth: 16 }} />
 
       <input
         value={search}
@@ -114,14 +117,12 @@ function TopBar({
           background: "var(--bg)",
           color: "var(--text)",
           width: 180,
-          maxWidth: "40vw",
-          minWidth: 80,
-          flexShrink: 1,
+          flexShrink: 0,
           outline: "none",
         }}
       />
 
-      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
         <button
           onClick={() => setLocale(locale === "en" ? "es" : "en")}
           title="Toggle locale"
@@ -207,7 +208,17 @@ function TopBar({
         </button>
         <WorkspaceSwitcher />
         {accountOpen && (
-          <div style={{ position: "absolute", top: 40, right: 10, zIndex: 60 }} onClick={() => setAccountOpen(false)}>
+          <div
+            style={{
+              position: "fixed",
+              top: 44,
+              right: 10,
+              zIndex: 60,
+              maxHeight: "calc(100vh - 60px)",
+              overflowY: "auto",
+            }}
+            onClick={() => setAccountOpen(false)}
+          >
             <AccountDialog onClose={() => setAccountOpen(false)} />
           </div>
         )}

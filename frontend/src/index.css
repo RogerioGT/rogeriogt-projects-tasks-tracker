@@ -95,6 +95,10 @@ textarea {
   * {
     -webkit-overflow-scrolling: touch;
   }
+  /* the top bar scrolls horizontally on narrow screens */
+  .app-title {
+    display: none;
+  }
 }
 
 /* On small screens, dialogs must never overflow the viewport */

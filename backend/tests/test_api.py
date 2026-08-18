@@ -1,0 +1,140 @@
+"""End-to-end API tests: admin, regular user, and anonymous scenarios.
+
+Run:
+  REQUIRE_AUTH=true ADMIN_EMAIL=admin@rogeriogt.com ADMIN_PASSWORD=test1234 \
+  DATA_DIR=/tmp/tt-test-data .venv/bin/python tests/test_api.py
+"""
+import os
+import sys
+
+from fastapi.testclient import TestClient
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app.main import app  # noqa: E402
+
+
+def main():
+    with TestClient(app) as c:
+        # ── Anonymous ──────────────────────────────────────────────
+        assert c.get("/api/boards").status_code == 401, "anon boards should 401"
+        assert c.get("/api/auth/required").json()["required"] is True
+
+        # ── Admin login ────────────────────────────────────────────
+        r = c.post("/api/auth/login", json={"email": "admin@rogeriogt.com", "password": "test1234"})
+        assert r.status_code == 200, r.text
+        admin = {"Authorization": f"Bearer {r.json()['token']}"}
+        admin_id = r.json()["user"]["id"]
+        assert r.json()["user"]["is_admin"] is True
+
+        # ── Admin creates users ────────────────────────────────────
+        r = c.post("/api/auth/users", json={"email": "bob@x.com", "name": "Bob", "password": "bobpass123"}, headers=admin)
+        assert r.status_code == 201, r.text
+        bob_id = r.json()["id"]
+        assert r.json()["is_admin"] is False
+
+        r = c.post("/api/auth/users", json={"email": "carol@x.com", "name": "Carol", "password": "carolpass123"}, headers=admin)
+        assert r.status_code == 201
+        carol_id = r.json()["id"]
+
+        # ── Teams ──────────────────────────────────────────────────
+        r = c.post("/api/teams", json={"name": "Design Team"}, headers=admin)
+        assert r.status_code == 201, r.text
+        team_id = r.json()["id"]
+        r = c.post(f"/api/teams/{team_id}/members", json={"user_id": bob_id, "role": "member"}, headers=admin)
+        assert r.status_code == 201
+        r = c.post(f"/api/teams/{team_id}/members", json={"user_id": carol_id}, headers=admin)
+        assert r.status_code == 201
+        teams = c.get("/api/teams", headers=admin).json()
+        assert len(teams) == 1 and len(teams[0]["members"]) == 2
+
+        # non-admin cannot create teams
+        bob = {"Authorization": f"Bearer {c.post('/api/auth/login', json={'email': 'bob@x.com', 'password': 'bobpass123'}).json()['token']}"}
+        assert c.post("/api/teams", json={"name": "Nope"}, headers=bob).status_code == 403
+
+        # ── Regular users see NOTHING initially (no shares, no own boards) ──
+        assert c.get("/api/boards", headers=bob).json() == []
+        assert c.get("/api/tasks", headers=bob).json() == []
+
+        # ── Admin creates a company + project ──────────────────────
+        r = c.post("/api/boards", json={"name": "Test Company", "kind": "company"}, headers=admin)
+        company_id = r.json()["id"]
+        r = c.post("/api/boards", json={"name": "Test Project", "kind": "project", "parent_id": company_id}, headers=admin)
+        project_id = r.json()["id"]
+        r = c.post("/api/tasks", json={"board_id": project_id, "title": "Secret task"}, headers=admin)
+        task_id = r.json()["id"]
+
+        # bob still sees nothing
+        assert c.get("/api/boards", headers=bob).json() == []
+        # bob cannot edit admin's project
+        assert c.patch(f"/api/boards/{project_id}", json={"name": "hacked"}, headers=bob).status_code == 403
+
+        # ── Share the PROJECT with bob (edit) ──────────────────────
+        r = c.post(f"/api/boards/{project_id}/acl", json={"user_id": bob_id, "permission": "edit"}, headers=admin)
+        assert r.status_code == 201
+        bob_boards = c.get("/api/boards", headers=bob).json()
+        names = [b["name"] for b in bob_boards]
+        assert "Test Project" in names, names
+        assert "Test Company" not in names, "sharing a project must NOT expose the parent company"
+        # bob can now edit the project
+        assert c.patch(f"/api/boards/{project_id}", json={"name": "Test Project v2"}, headers=bob).status_code == 200
+        # and sees the task
+        bob_tasks = c.get("/api/tasks", headers=bob).json()
+        assert any(t["id"] == task_id for t in bob_tasks)
+        # and can edit the task
+        assert c.patch(f"/api/tasks/{task_id}", json={"title": "Secret task v2"}, headers=bob).status_code == 200
+
+        # ── Share the COMPANY with carol (view) ────────────────────
+        r = c.post(f"/api/boards/{company_id}/acl", json={"user_id": carol_id, "permission": "view"}, headers=admin)
+        assert r.status_code == 201
+        carol = {"Authorization": f"Bearer {c.post('/api/auth/login', json={'email': 'carol@x.com', 'password': 'carolpass123'}).json()['token']}"}
+        carol_boards = c.get("/api/boards", headers=carol).json()
+        names = [b["name"] for b in carol_boards]
+        assert "Test Company" in names and "Test Project v2" in names, names
+        # view only: cannot edit
+        assert c.patch(f"/api/boards/{project_id}", json={"name": "x"}, headers=carol).status_code == 403
+        assert c.patch(f"/api/tasks/{task_id}", json={"title": "x"}, headers=carol).status_code == 403
+
+        # ── Team sharing: share company with Design Team (view) ────
+        r = c.post(f"/api/boards/{company_id}/acl", json={"team_id": team_id, "permission": "view"}, headers=admin)
+        assert r.status_code == 201
+        # bob (team member) also gains view on company + descendants; he keeps edit on project
+        bob_boards = c.get("/api/boards", headers=bob).json()
+        assert "Test Company" in [b["name"] for b in bob_boards]
+
+        # ── Task-level share (bob shares a task with carol) ────────
+        r = c.post(f"/api/tasks/{task_id}/acl", json={"user_id": carol_id, "permission": "edit"}, headers=bob)
+        assert r.status_code == 201
+        assert c.patch(f"/api/tasks/{task_id}", json={"title": "Carol can edit now"}, headers=carol).status_code == 200
+
+        # ── Batch task share ───────────────────────────────────────
+        t2 = c.post("/api/tasks", json={"board_id": project_id, "title": "Batch me"}, headers=admin).json()["id"]
+        t3 = c.post("/api/tasks", json={"board_id": project_id, "title": "Batch me too"}, headers=admin).json()["id"]
+        r = c.post("/api/tasks/share", json={"task_ids": [t2, t3], "user_id": carol_id, "permission": "view"}, headers=admin)
+        assert r.status_code == 201 and r.json()["created"] == 2, r.text
+        # carol can see them
+        carol_tasks = {t["id"] for t in c.get("/api/tasks", headers=carol).json()}
+        assert t2 in carol_tasks and t3 in carol_tasks
+
+        # ── Change password ────────────────────────────────────────
+        assert c.post("/api/auth/change-password", json={"current_password": "bobpass123", "new_password": "newpass456"}, headers=bob).status_code == 204
+        assert c.post("/api/auth/login", json={"email": "bob@x.com", "password": "bobpass123"}).status_code == 401
+        assert c.post("/api/auth/login", json={"email": "bob@x.com", "password": "newpass456"}).status_code == 200
+
+        # ── Deactivate bob ─────────────────────────────────────────
+        assert c.patch(f"/api/auth/users/{bob_id}", json={"is_active": False}, headers=admin).status_code == 200
+        assert c.post("/api/auth/login", json={"email": "bob@x.com", "password": "newpass456"}).status_code == 403
+        # his old token is now rejected (401 login required)
+        assert c.get("/api/boards", headers=bob).status_code == 401
+
+        # ── Dashboard stats respect visibility ─────────────────────
+        bob_stats = c.get("/api/tasks/stats/summary", headers=carol).json()
+        assert bob_stats["total"] >= 3
+
+        print("ALL API TESTS PASS")
+        print(f"  users: admin + bob + carol; team: {team_id}")
+        print(f"  boards: company + project; tasks: secret + 2 batch")
+
+
+if __name__ == "__main__":
+    main()

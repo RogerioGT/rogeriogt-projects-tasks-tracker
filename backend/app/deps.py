@@ -55,3 +55,10 @@ def get_current_user(
         db.commit()
         db.refresh(local)
     return local
+
+
+def get_current_admin(user: User = Depends(get_current_user)) -> User:
+    """Require the acting user to be an admin (403 otherwise)."""
+    if not REQUIRE_AUTH or user.is_admin or user.email == LOCAL_USER_EMAIL:
+        return user
+    raise HTTPException(403, "admin required")

@@ -33,6 +33,7 @@ class User(Base):
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     locale: Mapped[str] = mapped_column(String(5), default="en")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
@@ -107,13 +108,53 @@ class Event(Base):
 
 
 class BoardAcl(Base):
-    """Sharing: which user has what access to which board subtree."""
+    """Sharing: which user OR team has what access to which board subtree."""
 
     __tablename__ = "board_acl"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     board_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("boards.id"), index=True
     )
+    user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True, index=True
+    )
+    team_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("teams.id"), nullable=True, index=True
+    )
+    permission: Mapped[str] = mapped_column(String(10), default="view")  # view | edit
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class Team(Base):
+    """A named group of users the admin shares boards/tasks with."""
+
+    __tablename__ = "teams"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(120))
+    created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class TeamMember(Base):
+    __tablename__ = "team_members"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    team_id: Mapped[str] = mapped_column(String(36), ForeignKey("teams.id"), index=True)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), index=True)
+    role: Mapped[str] = mapped_column(String(10), default="member")  # member | admin
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
+class TaskAcl(Base):
+    """Sharing for a single task (user or team), independent of the board tree."""
+
+    __tablename__ = "task_acl"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    task_id: Mapped[str] = mapped_column(String(36), ForeignKey("tasks.id"), index=True)
+    user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True, index=True
+    )
+    team_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("teams.id"), nullable=True, index=True
+    )
     permission: Mapped[str] = mapped_column(String(10), default="view")  # view | edit
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)

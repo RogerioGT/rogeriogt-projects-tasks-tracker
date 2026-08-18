@@ -11,6 +11,8 @@ from .db import IS_SQLITE, engine
 # (table, column, ddl) — additive, idempotent, ordered.
 _MIGRATIONS = [
     ("users", "password_hash", "ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"),
+    ("users", "is_admin", "ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0"),
+    ("board_acl", "team_id", "ALTER TABLE board_acl ADD COLUMN team_id VARCHAR(36)"),
 ]
 
 

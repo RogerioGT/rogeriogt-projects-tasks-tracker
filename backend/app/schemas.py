@@ -2,7 +2,7 @@
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # --- Boards ---
@@ -101,6 +101,7 @@ class UserOut(BaseModel):
     name: str
     locale: str
     is_active: bool
+    is_admin: bool
     created_at: datetime
 
 
@@ -122,14 +123,115 @@ class AuthResponse(BaseModel):
 
 # --- Sharing ---
 class ShareIn(BaseModel):
-    user_id: str
+    """Share a board subtree with a user OR a team."""
+    user_id: str | None = None
+    team_id: str | None = None
     permission: str = "edit"  # view | edit
+
+    @model_validator(mode="after")
+    def _check_target(self):
+        if not self.user_id and not self.team_id:
+            raise ValueError("user_id or team_id is required")
+        if self.user_id and self.team_id:
+            raise ValueError("provide user_id OR team_id, not both")
+        return self
 
 
 class ShareOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     board_id: str
-    user_id: str
+    user_id: str | None
+    team_id: str | None
     permission: str
     created_at: datetime
+
+
+class TaskShareIn(BaseModel):
+    user_id: str | None = None
+    team_id: str | None = None
+    permission: str = "edit"
+
+    @model_validator(mode="after")
+    def _check_target(self):
+        if not self.user_id and not self.team_id:
+            raise ValueError("user_id or team_id is required")
+        if self.user_id and self.team_id:
+            raise ValueError("provide user_id OR team_id, not both")
+        return self
+
+
+class TaskShareOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    task_id: str
+    user_id: str | None
+    team_id: str | None
+    permission: str
+    created_at: datetime
+
+
+class BatchTaskShareIn(BaseModel):
+    task_ids: list[str] = Field(..., min_length=1)
+    user_id: str | None = None
+    team_id: str | None = None
+    permission: str = "edit"
+
+
+# --- Teams ---
+class TeamCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+
+
+class TeamUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+
+
+class TeamMemberIn(BaseModel):
+    user_id: str
+    role: str = "member"  # member | admin
+
+
+class TeamMemberOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    team_id: str
+    user_id: str
+    role: str
+    created_at: datetime
+
+
+class TeamOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    created_by: str | None
+    created_at: datetime
+
+
+class TeamWithMembers(BaseModel):
+    id: str
+    name: str
+    created_by: str | None
+    created_at: datetime
+    members: list[TeamMemberOut]
+
+
+# --- Admin user management ---
+class UserCreateIn(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+    name: str = Field("", max_length=120)
+    password: str = Field(..., min_length=4, max_length=128)
+    is_admin: bool = False
+
+
+class UserUpdateIn(BaseModel):
+    name: str | None = Field(default=None, max_length=120)
+    is_active: bool | None = None
+    is_admin: bool | None = None
+    password: str | None = Field(default=None, min_length=4, max_length=128)
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=4, max_length=128)

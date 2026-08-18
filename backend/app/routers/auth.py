@@ -6,9 +6,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_db
-from ..deps import REQUIRE_AUTH, get_current_user
+from ..deps import REQUIRE_AUTH, get_current_admin, get_current_user
 from ..models import User
-from ..schemas import AuthResponse, LoginIn, RegisterIn, UserOut
+from ..schemas import (
+    AuthResponse,
+    ChangePasswordIn,
+    LoginIn,
+    RegisterIn,
+    UserCreateIn,
+    UserOut,
+    UserUpdateIn,
+)
 from ..security import create_token, hash_password, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -26,6 +34,7 @@ def bootstrap_admin(db: Session) -> None:
         email=email,
         name=os.environ.get("ADMIN_NAME", "Admin"),
         password_hash=hash_password(password),
+        is_admin=True,
     ))
     db.commit()
 
@@ -72,3 +81,62 @@ def me(user: User = Depends(get_current_user)):
 @router.get("/users", response_model=list[UserOut])
 def list_users(db: Session = Depends(get_db)):
     return db.scalars(select(User).order_by(User.name, User.email)).all()
+
+
+@router.post("/users", response_model=UserOut, status_code=201)
+def admin_create_user(
+    payload: UserCreateIn,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(get_current_admin),
+):
+    """Admin creates a user account (registration is closed in prod mode)."""
+    email = payload.email.strip().lower()
+    if db.scalars(select(User).where(User.email == email)).first():
+        raise HTTPException(409, "email already registered")
+    user = User(
+        email=email,
+        name=payload.name.strip(),
+        password_hash=hash_password(payload.password),
+        is_admin=payload.is_admin,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.patch("/users/{user_id}", response_model=UserOut)
+def admin_update_user(
+    user_id: str,
+    payload: UserUpdateIn,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(404, "user not found")
+    if user.id == admin.id and payload.is_admin is False:
+        raise HTTPException(400, "you cannot remove your own admin role")
+    if payload.name is not None:
+        user.name = payload.name.strip()
+    if payload.is_active is not None:
+        user.is_active = payload.is_active
+    if payload.is_admin is not None:
+        user.is_admin = payload.is_admin
+    if payload.password is not None:
+        user.password_hash = hash_password(payload.password)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.post("/change-password", status_code=204)
+def change_password(
+    payload: ChangePasswordIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not user.password_hash or not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(401, "current password is incorrect")
+    user.password_hash = hash_password(payload.new_password)
+    db.commit()

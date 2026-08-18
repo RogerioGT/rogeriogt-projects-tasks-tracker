@@ -103,6 +103,7 @@ export type User = {
   email: string;
   name: string;
   locale: string;
+  phone: string | null;
   is_active: boolean;
   is_admin: boolean;
   created_at: string;
@@ -364,8 +365,11 @@ export function removeTeamMember(teamId: string, userId: string) {
 export function adminCreateUser(payload: { email: string; name?: string; password: string; is_admin?: boolean }) {
   return req<User>("/auth/users", { method: "POST", body: JSON.stringify(payload) });
 }
-export function adminUpdateUser(userId: string, payload: { name?: string; is_active?: boolean; is_admin?: boolean; password?: string }) {
+export function adminUpdateUser(userId: string, payload: { name?: string; email?: string; phone?: string | null; is_active?: boolean; is_admin?: boolean; password?: string }) {
   return req<User>(`/auth/users/${userId}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+export function updateMe(payload: { name?: string; email?: string; phone?: string | null }) {
+  return req<User>("/auth/me", { method: "PATCH", body: JSON.stringify(payload) });
 }
 export function changePassword(currentPassword: string, newPassword: string) {
   return req<void>("/auth/change-password", {

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { changePassword, createWorkspace, deleteWorkspace, renameWorkspace } from "../api";
+import { changePassword, createWorkspace, deleteWorkspace, renameWorkspace, updateMe } from "../api";
 import { useAuth } from "../auth";
 import { useWorkspace } from "../workspace";
 import { useI18n } from "../i18n";
@@ -37,6 +37,18 @@ export default function AccountDialog({ onClose }: { onClose: () => void }) {
   const [curPass, setCurPass] = useState("");
   const [newPass, setNewPass] = useState("");
   const [pwMsg, setPwMsg] = useState("");
+
+  // own profile
+  const { refreshUser } = useAuth();
+  const [pName, setPName] = useState(user ? user.name : "");
+  const [pEmail, setPEmail] = useState(user ? user.email : "");
+  const [pPhone, setPPhone] = useState(user?.phone || "");
+  const [pMsg, setPMsg] = useState("");
+  const profileMut = useMutation({
+    mutationFn: () => updateMe({ name: pName, email: pEmail, phone: pPhone || null }),
+    onSuccess: (u) => { refreshUser(u); setPMsg(t("saved")); setTimeout(() => setPMsg(""), 3000); },
+    onError: (e) => setPMsg(e instanceof Error ? e.message : String(e)),
+  });
 
   // workspaces (main boards)
   const qc = useQueryClient();
@@ -92,6 +104,15 @@ export default function AccountDialog({ onClose }: { onClose: () => void }) {
           <div style={{ color: "var(--text)" }}>{user.name || user.email}</div>
           <div style={{ color: "var(--text-muted)" }}>{user.email}</div>
           {user.is_admin && <div style={{ fontSize: 9, color: "#a78bfa", marginTop: 2 }}>{t("admin")}</div>}
+        </div>
+
+        <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 600 }}>{t("profile")}</div>
+          <input value={pName} onChange={(e) => setPName(e.target.value)} placeholder={t("name")} style={inputStyle} />
+          <input value={pEmail} onChange={(e) => setPEmail(e.target.value)} placeholder={t("email")} style={inputStyle} />
+          <input value={pPhone} onChange={(e) => setPPhone(e.target.value)} placeholder={t("phone")} style={inputStyle} />
+          {pMsg && <div style={{ fontSize: 10, color: pMsg === t("saved") ? "#22c55e" : "#ef4444" }}>{pMsg}</div>}
+          <button onClick={() => profileMut.mutate()} disabled={!pName.trim() || !pEmail.trim()} style={{ ...btnStyle, opacity: pName.trim() && pEmail.trim() ? 1 : 0.5 }}>{t("save")}</button>
         </div>
 
         <div style={{ borderTop: "1px solid var(--border)", paddingTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>

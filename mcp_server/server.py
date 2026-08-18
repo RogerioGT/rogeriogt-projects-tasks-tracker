@@ -338,9 +338,12 @@ def list_users() -> dict:
 
 
 @mcp.tool(description="Create a new user account (admin only).")
-def add_user(email: str, password: str, name: str = "", is_admin: bool = False) -> dict:
+def add_user(email: str, password: str, name: str = "", is_admin: bool = False, phone: str | None = None) -> dict:
     """The new user logs in with email + password."""
-    return _post("/api/auth/users", {"email": email, "password": password, "name": name, "is_admin": is_admin})
+    payload = {"email": email, "password": password, "name": name, "is_admin": is_admin}
+    if phone:
+        payload["phone"] = phone
+    return _post("/api/auth/users", payload)
 
 
 @mcp.tool(description="Activate, deactivate, or toggle admin for a user (admin only).")
@@ -355,6 +358,45 @@ def set_user_flags(user: str, is_active: bool | None = None, is_admin: bool | No
     if not payload:
         raise RuntimeError("Provide is_active and/or is_admin.")
     return _patch(f"/api/auth/users/{u['id']}", payload)
+
+
+@mcp.tool(description="Edit a member fully: name, email, phone, and/or password (admin only).")
+def update_user(
+    user: str,
+    name: str | None = None,
+    email: str | None = None,
+    phone: str | None = None,
+    password: str | None = None,
+) -> dict:
+    """user is a name, email, or id. Only provided fields change; phone=\"\" clears it."""
+    u = _resolve_user(user)
+    payload = {}
+    if name is not None:
+        payload["name"] = name
+    if email is not None:
+        payload["email"] = email
+    if phone is not None:
+        payload["phone"] = phone or None
+    if password is not None:
+        payload["password"] = password
+    if not payload:
+        raise RuntimeError("Provide at least one field to change.")
+    return _patch(f"/api/auth/users/{u['id']}", payload)
+
+
+@mcp.tool(description="Edit the current user's own profile: name, email, phone.")
+def update_me(name: str | None = None, email: str | None = None, phone: str | None = None) -> dict:
+    """Only provided fields change; phone=\"\" clears it."""
+    payload = {}
+    if name is not None:
+        payload["name"] = name
+    if email is not None:
+        payload["email"] = email
+    if phone is not None:
+        payload["phone"] = phone or None
+    if not payload:
+        raise RuntimeError("Provide at least one field to change.")
+    return _patch("/api/auth/me", payload)
 
 
 @mcp.tool(description="List all teams with their members (admin only).")

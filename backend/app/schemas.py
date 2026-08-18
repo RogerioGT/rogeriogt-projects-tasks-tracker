@@ -138,6 +138,7 @@ class UserOut(BaseModel):
     email: str
     name: str
     locale: str
+    phone: str | None = None
     is_active: bool
     is_admin: bool
     created_at: datetime
@@ -281,14 +282,25 @@ class UserCreateIn(BaseModel):
     email: str = Field(..., min_length=3, max_length=255)
     name: str = Field("", max_length=120)
     password: str = Field(..., min_length=4, max_length=128)
+    phone: str | None = Field(default=None, max_length=30)
     is_admin: bool = False
 
 
 class UserUpdateIn(BaseModel):
+    """Admin edits any field of a member account."""
     name: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, min_length=3, max_length=255)
+    phone: str | None = Field(default=None, max_length=30)
     is_active: bool | None = None
     is_admin: bool | None = None
     password: str | None = Field(default=None, min_length=4, max_length=128)
+
+
+class UserSelfUpdateIn(BaseModel):
+    """A user edits their own profile (name, email, phone)."""
+    name: str | None = Field(default=None, max_length=120)
+    email: str | None = Field(default=None, min_length=3, max_length=255)
+    phone: str | None = Field(default=None, max_length=30)
 
 
 class ChangePasswordIn(BaseModel):

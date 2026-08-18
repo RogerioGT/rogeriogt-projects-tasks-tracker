@@ -16,6 +16,7 @@ _MIGRATIONS = [
     ("boards", "deleted_at", "ALTER TABLE boards ADD COLUMN deleted_at DATETIME"),
     ("tasks", "deleted_at", "ALTER TABLE tasks ADD COLUMN deleted_at DATETIME"),
     ("boards", "workspace_id", "ALTER TABLE boards ADD COLUMN workspace_id VARCHAR(36)"),
+    ("users", "phone", "ALTER TABLE users ADD COLUMN phone VARCHAR(30)"),
 ]
 
 

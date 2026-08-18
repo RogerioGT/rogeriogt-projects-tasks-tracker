@@ -34,6 +34,7 @@ class User(Base):
     locale: Mapped[str] = mapped_column(String(5), default="en")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 

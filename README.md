@@ -46,10 +46,20 @@ Bilingual English/Spanish. Live at **[tasksmgr.rogeriogt.com](https://tasksmgr.r
   - Share a **single task** or a batch: the recipient sees the hierarchy
     chain but only the shared task(s).
 - View vs edit permissions, enforced on every endpoint.
+- **Full profile management**: every user edits their own name, email, phone,
+  and password; admins edit any member's fields from the People tab.
+- **Assignee dropdowns**: task and filter assignees are picked from the people
+  the board is actually shared with, instead of free typing.
+- **Multiple main boards (workspaces)**: independent board trees you can
+  create, rename, switch, and compare from the header or account menu. Each
+  has its own sections, columns, and tasks; boards can't be dragged across.
 - **Soft delete with 30-day Trash**: deleted boards and tasks are restorable
   from the admin Trash tab, then auto-purged after 30 days.
 - Stdlib-only crypto (PBKDF2 password hashing + HMAC-signed tokens), no
   bcrypt/pyjwt build issues in the slim Docker image.
+- **Hardening**: login rate limiting (10 attempts / 15 min), strict CORS
+  origin list, security headers (nosniff, frame-deny, referrer policy),
+  mandatory email validation, admin lockout on deactivation.
 
 ### UX
 
@@ -193,7 +203,7 @@ only); Caddy reverse-proxies https://tasksmgr.rogeriogt.com to it.
 
 ## MCP server: drive the board from chat
 
-The MCP server exposes **42 tools** covering the entire API, so Hermes (or any
+The MCP server exposes **50 tools** covering the entire API, so Hermes (or any
 MCP client) can drive the tracker from chat: "add task X to eyegenerate.com",
 "move 5bell.com under Personal Projects", "restore the deleted project", etc.
 
@@ -221,11 +231,12 @@ All endpoints live under `/api`. Auth via `Authorization: Bearer <token>`.
 
 | Area | Endpoints |
 |------|-----------|
-| Boards | `GET/POST /boards`, `PATCH/DELETE /boards/{id}`, `GET /boards/tree`, `POST /boards/{id}/move`, `POST /boards/{id}/convert` |
+| Workspaces | `GET/POST /workspaces`, `PATCH/DELETE /workspaces/{id}`, `POST /workspaces/{id}/restore`, `DELETE /workspaces/trash/{id}` |
+| Boards | `GET/POST /boards`, `PATCH/DELETE /boards/{id}`, `GET /boards/tree`, `POST /boards/{id}/move`, `POST /boards/{id}/convert`, `GET /boards/{id}/assignees` |
 | Tasks | `GET/POST /tasks`, `PATCH/DELETE /tasks/{id}`, `POST /tasks/{id}/complete|move|convert`, `GET /tasks/stats/summary` |
 | Sharing | `GET/POST/DELETE /boards/{id}/acl`, `GET/POST/DELETE /tasks/{id}/acl`, `POST /tasks/share` (batch) |
-| Auth | `POST /auth/login`, `GET /auth/me`, `GET /auth/users`, `POST /auth/change-password` |
-| Admin | `POST/PATCH /auth/users`, `GET/POST/PATCH/DELETE /teams` (+ members), `POST/PATCH/DELETE /statuses` |
+| Auth | `POST /auth/login`, `GET /auth/me`, `PATCH /auth/me` (own profile), `GET /auth/users`, `POST /auth/change-password` |
+| Admin | `POST/PATCH /auth/users` (full member edit incl. phone/password), `GET/POST/PATCH/DELETE /teams` (+ members), `POST/PATCH/DELETE /statuses` |
 | Trash | `GET /trash`, `POST /trash/{boards,tasks}/{id}/restore`, `DELETE /trash/{boards,tasks}/{id}` |
 | History | `GET /events` (filters: entity_type, action, limit) |
 
@@ -244,6 +255,8 @@ OpenAPI docs: `/docs` on any running instance.
 | v1.4 | Complete MCP coverage (42 tools) |
 | v1.5 | Section management menu, fixed vertical section drag-drop |
 | v1.6 | Security/logic audit: sharing permissions, auth on user list, purge crash fix, PATCH hardening, trashed-entity guards |
+| v1.7 | Multiple main boards (workspaces), assignee dropdowns from shared users |
+| v1.8 | Full profile management (name/email/phone/password), login rate limiting, security headers, stricter CORS |
 
 ---
 

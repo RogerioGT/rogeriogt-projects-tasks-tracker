@@ -1,7 +1,7 @@
 """Auth router: register, login, me, list users, bootstrap admin."""
 import os
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,11 +15,23 @@ from ..schemas import (
     RegisterIn,
     UserCreateIn,
     UserOut,
+    UserSelfUpdateIn,
     UserUpdateIn,
 )
 from ..security import create_token, hash_password, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+
+def _email_taken(db: Session, email: str, exclude_user_id: str | None = None) -> bool:
+    q = select(User).where(User.email == email)
+    if exclude_user_id:
+        q = q.where(User.id != exclude_user_id)
+    return db.scalars(q).first() is not None
+
+
+def _valid_email(email: str) -> bool:
+    return "@" in email and "." in email.split("@")[-1] and len(email) <= 255
 
 
 def bootstrap_admin(db: Session) -> None:
@@ -71,11 +83,41 @@ def register(payload: RegisterIn, db: Session = Depends(get_db)):
     return AuthResponse(token=create_token(user.id), user=user)
 
 
+# Simple in-memory login rate limiter: max 10 attempts per 15 min per IP+email.
+# Good enough for a small single-server deployment; swap for Redis if it grows.
+import threading
+import time as _time
+
+_login_attempts: dict[str, list[float]] = {}
+_login_lock = threading.Lock()
+
+LOGIN_MAX_ATTEMPTS = 10
+LOGIN_WINDOW_SECONDS = 15 * 60
+
+
+def _login_blocked(key: str) -> bool:
+    now = _time.time()
+    with _login_lock:
+        attempts = [t for t in _login_attempts.get(key, []) if now - t < LOGIN_WINDOW_SECONDS]
+        _login_attempts[key] = attempts
+        return len(attempts) >= LOGIN_MAX_ATTEMPTS
+
+
+def _record_failed_login(key: str) -> None:
+    with _login_lock:
+        _login_attempts.setdefault(key, []).append(_time.time())
+
+
 @router.post("/login", response_model=AuthResponse)
-def login(payload: LoginIn, db: Session = Depends(get_db)):
+def login(payload: LoginIn, request: Request, db: Session = Depends(get_db)):
     email = payload.email.strip().lower()
+    client_ip = request.client.host if request.client else "unknown"
+    key = f"{client_ip}:{email}"
+    if _login_blocked(key):
+        raise HTTPException(429, "too many attempts; try again later")
     user = db.scalars(select(User).where(User.email == email)).first()
     if not user or not user.password_hash or not verify_password(payload.password, user.password_hash):
+        _record_failed_login(key)
         raise HTTPException(401, "invalid email or password")
     if not user.is_active:
         raise HTTPException(403, "account disabled")
@@ -111,6 +153,7 @@ def admin_create_user(
         email=email,
         name=payload.name.strip(),
         password_hash=hash_password(payload.password),
+        phone=payload.phone.strip() if payload.phone else None,
         is_admin=payload.is_admin,
     )
     db.add(user)
@@ -131,14 +174,46 @@ def admin_update_user(
         raise HTTPException(404, "user not found")
     if user.id == admin.id and payload.is_admin is False:
         raise HTTPException(400, "you cannot remove your own admin role")
+    if payload.email is not None:
+        email = payload.email.strip().lower()
+        if not _valid_email(email):
+            raise HTTPException(400, "invalid email address")
+        if _email_taken(db, email, exclude_user_id=user.id):
+            raise HTTPException(409, "email already registered")
+        user.email = email
     if payload.name is not None:
         user.name = payload.name.strip()
+    if payload.phone is not None:
+        user.phone = payload.phone.strip() or None
     if payload.is_active is not None:
         user.is_active = payload.is_active
     if payload.is_admin is not None:
         user.is_admin = payload.is_admin
     if payload.password is not None:
         user.password_hash = hash_password(payload.password)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.patch("/me", response_model=UserOut)
+def update_me(
+    payload: UserSelfUpdateIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """A user edits their own profile: name, email, phone."""
+    if payload.email is not None:
+        email = payload.email.strip().lower()
+        if not _valid_email(email):
+            raise HTTPException(400, "invalid email address")
+        if _email_taken(db, email, exclude_user_id=user.id):
+            raise HTTPException(409, "email already registered")
+        user.email = email
+    if payload.name is not None:
+        user.name = payload.name.strip()
+    if payload.phone is not None:
+        user.phone = payload.phone.strip() or None
     db.commit()
     db.refresh(user)
     return user

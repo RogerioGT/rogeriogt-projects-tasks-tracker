@@ -83,6 +83,7 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
   const [uName, setUName] = useState("");
   const [uPass, setUPass] = useState("");
   const [uAdmin, setUAdmin] = useState(false);
+  const [editUser, setEditUser] = useState<{ id: string; name: string; email: string; phone: string } | null>(null);
   const createUserMut = useMutation({
     mutationFn: () => adminCreateUser({ email: uEmail, name: uName, password: uPass, is_admin: uAdmin }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["users"] }); setUEmail(""); setUName(""); setUPass(""); setUAdmin(false); flash(t("saved")); },
@@ -166,20 +167,34 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {(users || []).map((u) => (
-              <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, padding: "4px 6px", border: "1px solid var(--border)", borderRadius: 4, flexWrap: "wrap" }}>
-                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 150 }}>
-                  {u.name || u.email} <span style={{ color: "var(--text-faint)" }}>({u.email})</span>
-                </span>
-                {u.is_admin && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 99, background: "#8b5cf622", color: "#a78bfa", border: "1px solid #8b5cf655" }}>{t("admin")}</span>}
-                <button onClick={() => updateUserMut.mutate({ id: u.id, patch: { is_admin: !u.is_admin } })} style={{ ...btnStyle, fontSize: 10, padding: "2px 6px" }}>
-                  {u.is_admin ? t("member") : t("admin")}
-                </button>
-                <button
-                  onClick={() => updateUserMut.mutate({ id: u.id, patch: { is_active: !u.is_active } })}
-                  style={{ ...btnStyle, fontSize: 10, padding: "2px 6px", color: u.is_active ? "#ef4444" : "#22c55e", borderColor: u.is_active ? "#ef444455" : "#22c55e55" }}
-                >
-                  {u.is_active ? t("deactivate") : t("activate")}
-                </button>
+              <div key={u.id} style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, padding: "4px 6px", border: "1px solid var(--border)", borderRadius: 4 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 150 }}>
+                    {u.name || u.email} <span style={{ color: "var(--text-faint)" }}>({u.email})</span>
+                    {u.phone ? <span style={{ color: "var(--text-faint)" }}> · {u.phone}</span> : null}
+                  </span>
+                  {u.is_admin && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 99, background: "#8b5cf622", color: "#a78bfa", border: "1px solid #8b5cf655" }}>{t("admin")}</span>}
+                  {!u.is_active && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 99, background: "#ef444422", color: "#ef4444", border: "1px solid #ef444455" }}>{t("deactivated")}</span>}
+                  <button onClick={() => setEditUser(editUser?.id === u.id ? null : { id: u.id, name: u.name, email: u.email, phone: u.phone || "" })} style={{ ...btnStyle, fontSize: 10, padding: "2px 6px" }}>✎ {t("edit")}</button>
+                  <button onClick={() => updateUserMut.mutate({ id: u.id, patch: { is_admin: !u.is_admin } })} style={{ ...btnStyle, fontSize: 10, padding: "2px 6px" }}>
+                    {u.is_admin ? t("member") : t("admin")}
+                  </button>
+                  <button
+                    onClick={() => updateUserMut.mutate({ id: u.id, patch: { is_active: !u.is_active } })}
+                    style={{ ...btnStyle, fontSize: 10, padding: "2px 6px", color: u.is_active ? "#ef4444" : "#22c55e", borderColor: u.is_active ? "#ef444455" : "#22c55e55" }}
+                  >
+                    {u.is_active ? t("deactivate") : t("activate")}
+                  </button>
+                </div>
+                {editUser?.id === u.id && (
+                  <UserEditor
+                    key={u.id}
+                    initial={{ name: u.name, email: u.email, phone: u.phone || "" }}
+                    onSave={(patch) => { updateUserMut.mutate({ id: u.id, patch }); setEditUser(null); }}
+                    onCancel={() => setEditUser(null)}
+                    onPassword={(pwd) => updateUserMut.mutate({ id: u.id, patch: { password: pwd } })}
+                  />
+                )}
               </div>
             ))}
           </div>
@@ -340,6 +355,44 @@ function TrashTab() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Inline editor for a member: name, email, phone, and a separate password field. */
+function UserEditor({
+  initial,
+  onSave,
+  onCancel,
+  onPassword,
+}: {
+  initial: { name: string; email: string; phone: string };
+  onSave: (patch: { name?: string; email?: string; phone?: string | null }) => void;
+  onCancel: () => void;
+  onPassword: (password: string) => void;
+}) {
+  const { t } = useI18n();
+  const [name, setName] = useState(initial.name);
+  const [email, setEmail] = useState(initial.email);
+  const [phone, setPhone] = useState(initial.phone);
+  const [pwd, setPwd] = useState("");
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", padding: "6px 0 0", borderTop: "1px dashed var(--border)" }}>
+      <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("name")} style={{ ...inputStyle, flex: 1, minWidth: 110 }} />
+      <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t("email")} style={{ ...inputStyle, flex: 1.2, minWidth: 150 }} />
+      <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={t("phone")} style={{ ...inputStyle, flex: 1, minWidth: 110 }} />
+      <input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} placeholder={t("newPassword")} style={{ ...inputStyle, flex: 1, minWidth: 110 }} />
+      <button
+        onClick={() => {
+          onSave({ name, email, phone: phone || null });
+          if (pwd) onPassword(pwd);
+        }}
+        disabled={!name.trim() || !email.trim()}
+        style={{ ...btnStyle, background: "#3b82f6", color: "#fff", borderColor: "#3b82f6", opacity: name.trim() && email.trim() ? 1 : 0.5 }}
+      >
+        {t("save")}
+      </button>
+      <button onClick={onCancel} style={btnStyle}>{t("cancel")}</button>
     </div>
   );
 }

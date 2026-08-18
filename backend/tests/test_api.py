@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.main import app  # noqa: E402
 from app.models import Board, Workspace  # noqa: E402
+from app.routers.auth import LOGIN_MAX_ATTEMPTS  # noqa: E402
 from app.routers.workspaces import purge_expired_workspaces  # noqa: E402
 
 
@@ -515,6 +516,43 @@ def main():
             assert sdb.get(Board, b_id) is None
         finally:
             sdb.close()
+
+        # ── Profile editing ────────────────────────────────────────
+        # self-edit: name, email, phone
+        r = c.patch("/api/auth/me", json={"name": "Bob Renamed", "phone": "+1 555 123 4567"}, headers=bob)
+        assert r.status_code == 200, r.text
+        assert r.json()["name"] == "Bob Renamed"
+        assert r.json()["phone"] == "+1 555 123 4567"
+        # email change + uniqueness
+        assert c.patch("/api/auth/me", json={"email": "admin@rogeriogt.com"}, headers=bob).status_code == 409
+        assert c.patch("/api/auth/me", json={"email": "not-an-email"}, headers=bob).status_code == 400
+        r = c.patch("/api/auth/me", json={"email": "bob2@x.com"}, headers=bob)
+        assert r.status_code == 200
+        assert r.json()["email"] == "bob2@x.com"
+        # restore bob's email for the rest of the flow
+        c.patch("/api/auth/me", json={"email": "bob@x.com"}, headers=bob)
+        # phone cleared with empty string
+        assert c.patch("/api/auth/me", json={"phone": ""}, headers=bob).json()["phone"] is None
+
+        # admin edits a member fully: name, email, phone, password
+        r = c.patch(f"/api/auth/users/{carol_id}", json={"phone": "+502 1111 2222", "name": "Carol C"}, headers=admin)
+        assert r.status_code == 200
+        assert r.json()["phone"] == "+502 1111 2222"
+        # carol logs in with the new password set by admin
+        assert c.patch(f"/api/auth/users/{carol_id}", json={"password": "newpass123"}, headers=admin).status_code == 200
+        r = c.post("/api/auth/login", json={"email": "carol@x.com", "password": "newpass123"})
+        assert r.status_code == 200
+        carol = {"Authorization": f"Bearer {r.json()['token']}"}
+        # invalid email rejected by admin edit too
+        assert c.patch(f"/api/auth/users/{carol_id}", json={"email": "nope"}, headers=admin).status_code == 400
+        # self-edit cannot touch admin flags (fields not in schema -> ignored)
+        assert c.patch("/api/auth/me", json={"name": "Carol C"}, headers=carol).status_code == 200
+
+        # ── Login rate limiting ────────────────────────────────────
+        for _ in range(LOGIN_MAX_ATTEMPTS):
+            c.post("/api/auth/login", json={"email": "bob@x.com", "password": "wrong-password"})
+        r = c.post("/api/auth/login", json={"email": "bob@x.com", "password": "wrong-password"})
+        assert r.status_code == 429, "login must be rate-limited after repeated failures"
 
         print("ALL API TESTS PASS")
         print(f"  users: admin + bob + carol; team: {team_id}")

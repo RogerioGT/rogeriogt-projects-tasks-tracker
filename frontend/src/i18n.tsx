@@ -109,6 +109,8 @@ const dict: Dict = {
   newBoardPlaceholder: { en: "Board name", es: "Nombre del tablero" },
   deleteWorkspaceWarning: { en: "Delete this board and EVERYTHING in it? You can restore it from the Trash within 30 days.", es: "Eliminar este tablero y TODO lo que contiene? Puedes restaurarlo desde la papelera dentro de 30 dias." },
   assigneeNone: { en: "Unassigned", es: "Sin asignar" },
+  profile: { en: "Profile", es: "Perfil" },
+  phone: { en: "Phone", es: "Telefono" },
   people: { en: "People", es: "Personas" },
   users: { en: "Users", es: "Usuarios" },
   members: { en: "Members", es: "Miembros" },

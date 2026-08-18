@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..access import board_permission, visible_board_ids
 from ..db import get_db
 from ..deps import get_current_user
-from ..models import Board, BoardAcl, Event, Task, TaskAcl, User
+from ..models import Board, BoardAcl, Event, Task, TaskAcl, User, Workspace
 from ..schemas import BoardCreate, BoardKindChange, BoardMove, BoardOut, BoardUpdate
 
 router = APIRouter(prefix="/api/boards", tags=["boards"])
@@ -37,8 +37,10 @@ def _log(db: Session, entity: str, eid: str, action: str, user_id=None, field=No
 
 
 @router.get("", response_model=list[BoardOut])
-def list_boards(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def list_boards(workspace_id: str | None = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = select(Board).where(Board.deleted_at.is_(None))
+    if workspace_id:
+        q = q.where(Board.workspace_id == workspace_id)
     visible = visible_board_ids(db, user)
     if visible is not None:
         q = q.where(Board.id.in_(visible))
@@ -46,10 +48,11 @@ def list_boards(db: Session = Depends(get_db), user: User = Depends(get_current_
 
 
 @router.get("/tree")
-def board_tree(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    boards = db.scalars(
-        select(Board).where(Board.deleted_at.is_(None)).order_by(Board.sort_order, Board.name)
-    ).all()
+def board_tree(workspace_id: str | None = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    q = select(Board).where(Board.deleted_at.is_(None))
+    if workspace_id:
+        q = q.where(Board.workspace_id == workspace_id)
+    boards = db.scalars(q.order_by(Board.sort_order, Board.name)).all()
     visible = visible_board_ids(db, user)
     if visible is not None:
         boards = [b for b in boards if b.id in visible]
@@ -64,6 +67,7 @@ def board_tree(db: Session = Depends(get_db), user: User = Depends(get_current_u
                 "color": b.color,
                 "sort_order": b.sort_order,
                 "parent_id": b.parent_id,
+                "workspace_id": b.workspace_id,
                 "permission": perm,  # "edit" | "view" | None
                 "children": [],
             }
@@ -95,6 +99,7 @@ def board_tree(db: Session = Depends(get_db), user: User = Depends(get_current_u
                 "color": b.color,
                 "sort_order": b.sort_order,
                 "parent_id": b.parent_id,
+                "workspace_id": b.workspace_id,
                 "permission": board_permission(db, user, b.id),
                 "children": [],
             }
@@ -104,6 +109,7 @@ def board_tree(db: Session = Depends(get_db), user: User = Depends(get_current_u
 
 @router.post("", response_model=BoardOut, status_code=201)
 def create_board(payload: BoardCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    parent = None
     if payload.parent_id:
         parent = db.get(Board, payload.parent_id)
         if not parent or parent.deleted_at is not None:
@@ -112,9 +118,22 @@ def create_board(payload: BoardCreate, db: Session = Depends(get_db), user: User
             raise HTTPException(403, "no edit permission on parent board")
     if payload.kind not in ("section", "company", "project"):
         raise HTTPException(400, "kind must be section, company, or project")
+    # resolve workspace: inherit from parent, else payload, else default
+    if parent is not None:
+        workspace_id = parent.workspace_id
+    elif payload.workspace_id:
+        from .workspaces import _ensure_default_workspace
+        ws = db.get(Workspace, payload.workspace_id)
+        if not ws or ws.deleted_at is not None:
+            raise HTTPException(404, "workspace not found")
+        workspace_id = ws.id
+    else:
+        from .workspaces import _ensure_default_workspace
+        workspace_id = _ensure_default_workspace(db).id
     board = Board(
         name=payload.name,
         parent_id=payload.parent_id,
+        workspace_id=workspace_id,
         kind=payload.kind,
         color=payload.color or _auto_color(db),
         sort_order=payload.sort_order,
@@ -168,6 +187,9 @@ def move_board(board_id: str, payload: BoardMove, db: Session = Depends(get_db),
             raise HTTPException(404, "target board not found")
         if board_permission(db, user, new_parent_id) != "edit":
             raise HTTPException(403, "no edit permission on the target board")
+        # workspace guard: boards cannot move across main boards
+        if new_parent.workspace_id != board.workspace_id:
+            raise HTTPException(400, "cannot move a board to another main board")
         # cycle guard: walk up from new_parent; must not hit this board
         node = new_parent
         while node is not None:
@@ -188,10 +210,11 @@ def move_board(board_id: str, payload: BoardMove, db: Session = Depends(get_db),
         ).all()
         for i, sib in enumerate(siblings):
             sib.sort_order = i
-    # top-level boards too
+    # top-level boards too (only within the board's own main board)
     if new_parent_id is None or old_parent is None:
         roots = db.scalars(
-            select(Board).where(Board.parent_id.is_(None), Board.deleted_at.is_(None))
+            select(Board)
+            .where(Board.parent_id.is_(None), Board.deleted_at.is_(None), Board.workspace_id == board.workspace_id)
             .order_by(Board.sort_order, Board.name)
         ).all()
         for i, r in enumerate(roots):
@@ -213,6 +236,39 @@ def move_board(board_id: str, payload: BoardMove, db: Session = Depends(get_db),
     db.commit()
     db.refresh(board)
     return board
+
+
+@router.get("/{board_id}/assignees")
+def board_assignees(board_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Users available for assigning tasks in this board: everyone the board
+    is shared with (directly, via teams, via task-level shares), plus the
+    board creator and admins. Requires at least view access on the board."""
+    board = db.get(Board, board_id)
+    if not board or board.deleted_at is not None:
+        raise HTTPException(404, "board not found")
+    if board_permission(db, user, board_id) is None:
+        raise HTTPException(403, "no access to this board")
+    subtree = _board_ids_under(db, board_id)
+    ids: set[str] = set()
+    # board-level shares (user + team) on the board or its ancestors
+    node: Board | None = board
+    while node is not None:
+        ids.update(u for u in db.scalars(select(BoardAcl.user_id).where(BoardAcl.board_id == node.id, BoardAcl.user_id.is_not(None))).all() if u)
+        team_ids = db.scalars(select(BoardAcl.team_id).where(BoardAcl.board_id == node.id, BoardAcl.team_id.is_not(None))).all()
+        if team_ids:
+            from ..models import TeamMember
+            ids.update(db.scalars(select(TeamMember.user_id).where(TeamMember.team_id.in_(team_ids))).all())
+        node = node.parent
+    # task-level shares within the subtree
+    task_ids = db.scalars(select(Task.id).where(Task.board_id.in_(subtree))).all()
+    if task_ids:
+        ids.update(u for u in db.scalars(select(TaskAcl.user_id).where(TaskAcl.task_id.in_(task_ids), TaskAcl.user_id.is_not(None))).all() if u)
+    # board creator + admins
+    if board.created_by:
+        ids.add(board.created_by)
+    ids.update(db.scalars(select(User.id).where(User.is_admin.is_(True))).all())
+    users = db.scalars(select(User).where(User.id.in_(ids), User.is_active.is_(True)).order_by(User.name, User.email)).all()
+    return [{"id": u.id, "name": u.name, "email": u.email, "is_admin": u.is_admin} for u in users]
 
 
 @router.delete("/{board_id}", status_code=204)
@@ -255,8 +311,12 @@ def convert_kind(board_id: str, payload: BoardKindChange, db: Session = Depends(
     old_kind = board.kind
     if payload.kind == "section":
         board.parent_id = None
-        # reindex top-level
-        roots = db.scalars(select(Board).where(Board.parent_id.is_(None), Board.deleted_at.is_(None)).order_by(Board.sort_order)).all()
+        # reindex top-level (only within this board's own main board)
+        roots = db.scalars(
+            select(Board)
+            .where(Board.parent_id.is_(None), Board.deleted_at.is_(None), Board.workspace_id == board.workspace_id)
+            .order_by(Board.sort_order)
+        ).all()
         for i, r in enumerate(roots):
             if r.id != board.id:
                 r.sort_order = i

@@ -42,7 +42,7 @@ export default function HistoryView() {
     queryKey: ["events", filter],
     queryFn: () => fetchEvents({ entity_type: filter === "all" ? undefined : filter, limit: 500 }),
   });
-  const { data: boards } = useQuery({ queryKey: ["boards"], queryFn: fetchBoards });
+  const { data: boards } = useQuery({ queryKey: ["boards"], queryFn: () => fetchBoards() });
 
   const boardName = useMemo(() => {
     const m = new Map<string, string>();

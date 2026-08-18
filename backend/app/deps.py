@@ -62,3 +62,8 @@ def get_current_admin(user: User = Depends(get_current_user)) -> User:
     if not REQUIRE_AUTH or user.is_admin or user.email == LOCAL_USER_EMAIL:
         return user
     raise HTTPException(403, "admin required")
+
+
+def is_local_mode() -> bool:
+    """True when running without mandatory auth (localhost / dev)."""
+    return not REQUIRE_AUTH

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { fetchBoardTree, fetchTasks, fetchStatuses, createTask, toggleComplete, updateTask, createBoard, updateBoard, moveBoard, convertBoardKind, deleteBoard, deleteTask, convertTaskToProject, Task, fetchBoards, Board, BoardTreeNode } from "../api";
 import { useI18n } from "../i18n";
+import { useWorkspace } from "../workspace";
 import ShareDialog from "../components/ShareDialog";
 
 const priorityColor: Record<string, string> = {
@@ -502,9 +503,10 @@ function Column({
 export default function BoardView({ search }: { search: string }) {
   const { t } = useI18n();
   const qc = useQueryClient();
-  const { data: tree } = useQuery({ queryKey: ["boards", "tree"], queryFn: fetchBoardTree });
+  const { currentId: wsId } = useWorkspace();
+  const { data: tree } = useQuery({ queryKey: ["boards", "tree", wsId], queryFn: () => fetchBoardTree(wsId || undefined) });
   const { data: tasks } = useQuery({ queryKey: ["tasks", { search }], queryFn: () => fetchTasks({ search: search || undefined, sort: "position" }) });
-  const { data: flatBoards } = useQuery({ queryKey: ["boards", "flat"], queryFn: fetchBoards });
+  const { data: flatBoards } = useQuery({ queryKey: ["boards", "flat", wsId], queryFn: () => fetchBoards(wsId || undefined) });
 
   const [addParent, setAddParent] = useState<string | null>(null);
   const [newBoardName, setNewBoardName] = useState("");
@@ -519,7 +521,7 @@ export default function BoardView({ search }: { search: string }) {
   const [sectionShareId, setSectionShareId] = useState<string | null>(null);
 
   const createBoardMut = useMutation({
-    mutationFn: () => createBoard({ name: newBoardName, parent_id: addParent, kind: addParent ? "project" : "section", color: newBoardColor || undefined, sort_order: 0 }),
+    mutationFn: () => createBoard({ name: newBoardName, parent_id: addParent, workspace_id: addParent ? undefined : (wsId || undefined), kind: addParent ? "project" : "section", color: newBoardColor || undefined, sort_order: 0 }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["boards"] }); setAddParent(null); setAddSectionOpen(false); setNewBoardName(""); setNewBoardColor(""); },
   });
 

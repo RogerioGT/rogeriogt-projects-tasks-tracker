@@ -121,9 +121,14 @@ mcp = mcpserver.MCPServer(
 
 
 @mcp.tool(description="List all boards as a nested tree (sections -> companies -> projects).")
-def list_boards() -> dict:
-    """Return the full board hierarchy with each board's id, name, kind, and color."""
-    tree = _get("/api/boards/tree")
+def list_boards(workspace: str | None = None) -> dict:
+    """Return the board hierarchy with each board's id, name, kind, and color.
+    workspace: main board name or id (optional; default shows all main boards' trees)."""
+    if workspace:
+        wid = _resolve_workspace(workspace)
+        tree = _get(f"/api/boards/tree?workspace_id={wid}")
+    else:
+        tree = _get("/api/boards/tree")
     return {"tree": tree}
 
 
@@ -249,12 +254,16 @@ def add_board(
     kind: str = "project",
     parent: str | None = None,
     color: str | None = None,
+    workspace: str | None = None,
 ) -> dict:
-    """kind: section|company|project. parent is a parent board name or id (optional)."""
+    """kind: section|company|project. parent is a parent board name or id (optional).
+    workspace: main board name or id for new top-level sections (optional; defaults to the main board)."""
     payload = {"name": name, "kind": kind, "color": color}
     if parent:
         p = _resolve_board(parent)
         payload["parent_id"] = p["id"]
+    elif workspace:
+        payload["workspace_id"] = _resolve_workspace(workspace)
     return _post("/api/boards", payload)
 
 
@@ -564,6 +573,64 @@ def list_events(entity_type: str | None = None, action: str | None = None, limit
 def whoami() -> dict:
     data = _get("/api/auth/me")
     return data if isinstance(data, dict) else {"user": data}
+
+
+# ── Workspaces (main boards) ─────────────────────────────────────────────
+@mcp.tool(description="List all main boards (workspaces) with board counts.")
+def list_workspaces() -> dict:
+    data = _get("/api/workspaces")
+    return {"workspaces": data} if isinstance(data, list) else data
+
+
+@mcp.tool(description="Create a new main board (workspace): a totally independent board with its own sections, columns and tasks.")
+def add_workspace(name: str) -> dict:
+    data = _post("/api/workspaces", {"name": name})
+    return data if isinstance(data, dict) else {"workspace": data}
+
+
+@mcp.tool(description="Rename a main board (workspace).")
+def rename_workspace(workspace: str, name: str) -> dict:
+    wid = _resolve_workspace(workspace)
+    data = _patch(f"/api/workspaces/{wid}", {"name": name})
+    return data if isinstance(data, dict) else {"workspace": data}
+
+
+@mcp.tool(description="Delete a main board and everything in it (soft delete: goes to Trash, restorable 30 days).")
+def delete_workspace(workspace: str) -> dict:
+    wid = _resolve_workspace(workspace)
+    _delete(f"/api/workspaces/{wid}")
+    return {"deleted": wid}
+
+
+@mcp.tool(description="Restore a soft-deleted main board from the Trash (everything inside comes back).")
+def restore_workspace(workspace_id: str) -> dict:
+    data = _post(f"/api/workspaces/{workspace_id}/restore", None)
+    return data if isinstance(data, dict) else {"workspace": data}
+
+
+@mcp.tool(description="Permanently delete a trashed main board and everything in it.")
+def purge_workspace(workspace_id: str) -> dict:
+    _delete(f"/api/workspaces/trash/{workspace_id}")
+    return {"purged": workspace_id}
+
+
+def _resolve_workspace(workspace: str) -> str:
+    """Resolve a workspace by id or name (exact then partial match)."""
+    data = _get("/api/workspaces")
+    if not isinstance(data, list):
+        raise RuntimeError(f"workspace lookup failed: {data}")
+    ws_list = data
+    for w in ws_list:
+        if w.get("id") == workspace:
+            return w["id"]
+    for w in ws_list:
+        if w.get("name") == workspace:
+            return w["id"]
+    for w in ws_list:
+        n = w.get("name") or ""
+        if workspace.lower() in n.lower():
+            return w["id"]
+    raise RuntimeError(f"workspace not found: {workspace!r} (available: {[w.get('name') for w in ws_list]})")
 
 
 @mcp.tool(description="Change the current user's password.")

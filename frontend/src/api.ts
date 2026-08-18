@@ -40,8 +40,24 @@ export type BoardTreeNode = {
   color: string;
   sort_order: number;
   parent_id: string | null;
+  workspace_id: string | null;
   permission: "edit" | "view" | null;
   children: BoardTreeNode[];
+};
+
+export type Workspace = {
+  id: string;
+  name: string;
+  created_by: string | null;
+  created_at: string;
+  board_count: number;
+};
+
+export type AssigneeUser = {
+  id: string;
+  name: string;
+  email: string;
+  is_admin: boolean;
 };
 
 export type Task = {
@@ -136,14 +152,39 @@ export type Status = {
 };
 
 /* Boards */
-export function fetchBoards() {
-  return req<Board[]>("/boards");
+export function fetchBoards(workspaceId?: string) {
+  const q = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : "";
+  return req<Board[]>(`/boards${q}`);
 }
-export function fetchBoardTree() {
-  return req<BoardTreeNode[]>("/boards/tree");
+export function fetchBoardTree(workspaceId?: string) {
+  const q = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : "";
+  return req<BoardTreeNode[]>(`/boards/tree${q}`);
 }
-export function createBoard(payload: { name: string; parent_id?: string | null; kind: string; color?: string; sort_order?: number }) {
+export function createBoard(payload: { name: string; parent_id?: string | null; workspace_id?: string | null; kind: string; color?: string; sort_order?: number }) {
   return req<Board>("/boards", { method: "POST", body: JSON.stringify(payload) });
+}
+
+/* Workspaces */
+export function fetchWorkspaces() {
+  return req<Workspace[]>("/workspaces");
+}
+export function createWorkspace(name: string) {
+  return req<Workspace>("/workspaces", { method: "POST", body: JSON.stringify({ name }) });
+}
+export function renameWorkspace(id: string, name: string) {
+  return req<Workspace>(`/workspaces/${id}`, { method: "PATCH", body: JSON.stringify({ name }) });
+}
+export function deleteWorkspace(id: string) {
+  return req<void>(`/workspaces/${id}`, { method: "DELETE" });
+}
+export function restoreWorkspace(id: string) {
+  return req<Workspace>(`/workspaces/${id}/restore`, { method: "POST" });
+}
+export function purgeWorkspace(id: string) {
+  return req<void>(`/workspaces/trash/${id}`, { method: "DELETE" });
+}
+export function fetchAssignees(boardId: string) {
+  return req<AssigneeUser[]>(`/boards/${boardId}/assignees`);
 }
 export function updateBoard(id: string, payload: Partial<{ name: string; color: string; sort_order: number }>) {
   return req<Board>(`/boards/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
@@ -336,8 +377,9 @@ export function changePassword(currentPassword: string, newPassword: string) {
 /* Trash */
 export type TrashBoard = { id: string; name: string; kind: string; deleted_at: string; expires_in_days: number };
 export type TrashTask = { id: string; title: string; deleted_at: string; expires_in_days: number };
+export type TrashWorkspace = { id: string; name: string; deleted_at: string; expires_in_days: number; board_count: number };
 export function fetchTrash() {
-  return req<{ boards: TrashBoard[]; tasks: TrashTask[]; trash_days: number }>("/trash");
+  return req<{ workspaces: TrashWorkspace[]; boards: TrashBoard[]; tasks: TrashTask[]; trash_days: number }>("/trash");
 }
 export function restoreBoard(id: string) {
   return req<{ restored: string }>(`/trash/boards/${id}/restore`, { method: "POST" });

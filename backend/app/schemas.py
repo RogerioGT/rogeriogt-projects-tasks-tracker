@@ -6,9 +6,27 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # --- Boards ---
+class WorkspaceCreate(BaseModel):
+    name: str
+
+
+class WorkspaceRename(BaseModel):
+    name: str
+
+
+class WorkspaceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    created_by: str | None
+    created_at: datetime
+    board_count: int = 0
+
+
 class BoardCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     parent_id: str | None = None
+    workspace_id: str | None = None
     kind: str = "project"
     color: str | None = None
     sort_order: int = 0
@@ -37,6 +55,7 @@ class BoardOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     parent_id: str | None
+    workspace_id: str | None
     name: str
     kind: str
     color: str

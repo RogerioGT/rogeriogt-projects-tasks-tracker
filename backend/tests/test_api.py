@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.main import app  # noqa: E402
+from app.models import Board, Workspace  # noqa: E402
+from app.routers.workspaces import purge_expired_workspaces  # noqa: E402
 
 
 def main():
@@ -408,6 +410,111 @@ def main():
         assert r1.json()["color"] != r2.json()["color"], "auto colors should differ"
         c.delete(f"/api/boards/{r1.json()['id']}", headers=admin)
         c.delete(f"/api/boards/{r2.json()['id']}", headers=admin)
+
+        # ── Workspaces (main boards) ──────────────────────────────
+        ws_list = c.get("/api/workspaces", headers=admin).json()
+        assert len(ws_list) >= 1, "default workspace must exist after bootstrap"
+        main_ws = ws_list[0]["id"]
+
+        # boards created without workspace go to the default one
+        r = c.post("/api/boards", json={"name": "WS A section", "kind": "section"}, headers=admin)
+        assert r.status_code == 201
+        ws_a_sec = r.json()["id"]
+        assert c.get("/api/boards", headers=admin).json()[-1]["workspace_id"] == main_ws
+
+        # create a second workspace + section + nested project in it
+        r = c.post("/api/workspaces", json={"name": "Board 2"}, headers=admin)
+        assert r.status_code == 201
+        ws2 = r.json()["id"]
+        assert c.post("/api/workspaces", json={"name": "Board 2"}, headers=admin).status_code == 409  # dup name
+        r = c.post("/api/boards", json={"name": "WS2 sec", "kind": "section", "workspace_id": ws2}, headers=admin)
+        assert r.status_code == 201
+        ws2_sec = r.json()["id"]
+        assert r.json()["workspace_id"] == ws2
+        r = c.post("/api/boards", json={"name": "WS2 proj", "kind": "project", "parent_id": ws2_sec}, headers=admin)
+        assert r.status_code == 201
+        ws2_proj = r.json()["id"]
+        assert r.json()["workspace_id"] == ws2  # inherited from parent
+
+        # tree filtering per workspace
+        tree2 = c.get(f"/api/boards/tree?workspace_id={ws2}", headers=admin).json()
+        assert [n["name"] for n in tree2] == ["WS2 sec"], tree2
+        tree1 = c.get(f"/api/boards/tree?workspace_id={main_ws}", headers=admin).json()
+        names1 = [n["name"] for n in tree1]
+        assert "WS2 sec" not in names1, "workspace filter must isolate trees"
+
+        # cross-workspace move is rejected
+        r = c.post(f"/api/boards/{ws_a_sec}/move", json={"parent_id": ws2_sec}, headers=admin)
+        assert r.status_code == 400
+
+        # list boards filter
+        boards_ws2 = c.get(f"/api/boards?workspace_id={ws2}", headers=admin).json()
+        assert {b["name"] for b in boards_ws2} == {"WS2 sec", "WS2 proj"}
+
+        # rename workspace
+        assert c.patch(f"/api/workspaces/{ws2}", json={"name": "Board 2 v2"}, headers=admin).status_code == 200
+
+        # ── Assignees endpoint ─────────────────────────────────────
+        # share ws2 section with bob (view) -> bob appears as assignee
+        c.post(f"/api/boards/{ws2_sec}/acl", json={"user_id": bob_id, "permission": "edit"}, headers=admin)
+        assignees = c.get(f"/api/boards/{ws2_proj}/assignees", headers=admin).json()
+        assignee_names = {a["name"] for a in assignees}
+        assert "Bob" in assignee_names, assignees
+        # carol has no access anywhere relevant -> not in assignees
+        assert "Carol" not in assignee_names
+        # regular user without access gets 403
+        assert c.get(f"/api/boards/{ws2_proj}/assignees", headers=carol).status_code == 403
+
+        # ── Workspace delete -> trash -> restore ───────────────────
+        assert c.delete(f"/api/workspaces/{ws2}", headers=admin).status_code == 204
+        assert c.get("/api/workspaces", headers=admin).json()[0]["id"] != ws2 or len(c.get("/api/workspaces", headers=admin).json()) == 1
+        # ws2 boards are in trash, grouped under the workspace (not individually)
+        trash = c.get("/api/trash", headers=admin).json()
+        assert any(w["id"] == ws2 for w in trash["workspaces"]), trash
+        assert not any(b["name"] == "WS2 sec" for b in trash["boards"])
+        # tasks in ws2 not listed individually
+        assert c.get("/api/trash", headers=admin).status_code == 200
+        # restore
+        assert c.post(f"/api/workspaces/{ws2}/restore", headers=admin).status_code == 200
+        assert c.get("/api/boards", headers=admin).status_code == 200
+        restored = c.get(f"/api/boards?workspace_id={ws2}", headers=admin).json()
+        assert {b["name"] for b in restored} == {"WS2 sec", "WS2 proj"}
+        # workspace no longer in trash
+        trash = c.get("/api/trash", headers=admin).json()
+        assert not any(w["id"] == ws2 for w in trash["workspaces"])
+
+        # cannot delete the last workspace
+        r = c.post("/api/workspaces", json={"name": "Board 3"}, headers=admin).json()["id"]
+        for wid in (main_ws, r):
+            assert c.delete(f"/api/workspaces/{wid}", headers=admin).status_code in (204, 400)
+        live_ws = [w for w in c.get("/api/workspaces", headers=admin).json()]
+        assert len(live_ws) == 1, "the last workspace must survive"
+        last_id = live_ws[0]["id"]
+        assert c.delete(f"/api/workspaces/{last_id}", headers=admin).status_code == 400
+
+        # purge expired workspaces on a fresh session
+        sdb = SessionLocal()
+        try:
+            import uuid as _uuid
+            w = Workspace(name="Expired WS")
+            sdb.add(w)
+            sdb.commit()
+            sdb.refresh(w)
+            w.deleted_at = datetime.utcnow() - timedelta(days=40)
+            b2 = Board(name="Expired sec", kind="section", workspace_id=w.id)
+            sdb.add(b2)
+            sdb.commit()
+            sdb.refresh(b2)
+            b2.deleted_at = datetime.utcnow() - timedelta(days=40)
+            sdb.commit()
+            w_id, b_id = w.id, b2.id
+            sdb.expunge_all()
+            n = purge_expired_workspaces()
+            assert n >= 1
+            assert sdb.get(Workspace, w_id) is None
+            assert sdb.get(Board, b_id) is None
+        finally:
+            sdb.close()
 
         print("ALL API TESTS PASS")
         print(f"  users: admin + bob + carol; team: {team_id}")

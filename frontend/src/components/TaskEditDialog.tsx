@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchStatuses, fetchBoards, updateTask, deleteTask, convertTaskToProject, Task } from "../api";
+import { fetchStatuses, fetchBoards, fetchAssignees, updateTask, deleteTask, convertTaskToProject, Task } from "../api";
 import { useI18n } from "../i18n";
 import ShareDialog from "./ShareDialog";
 
@@ -43,8 +43,20 @@ export default function TaskEditDialog({
   const [error, setError] = useState("");
 
   const { data: statuses } = useQuery({ queryKey: ["statuses"], queryFn: fetchStatuses });
-  const { data: boards } = useQuery({ queryKey: ["boards", "flat"], queryFn: fetchBoards });
+  const { data: boards } = useQuery({ queryKey: ["boards", "flat"], queryFn: () => fetchBoards() });
   const boardName = new Map((boards || []).map((b) => [b.id, b.name]));
+  const { data: assignees } = useQuery({
+    queryKey: ["assignees", task.board_id],
+    queryFn: () => fetchAssignees(task.board_id),
+  });
+  // keep the current assignee visible even if not in the share list
+  const assigneeOptions = useMemo(() => {
+    const list = [...(assignees || [])];
+    if (assignee && !list.some((u) => u.name === assignee)) {
+      list.push({ id: "__current__", name: assignee, email: "", is_admin: false });
+    }
+    return list;
+  }, [assignees, assignee]);
 
   const updateMut = useMutation({
     mutationFn: () =>
@@ -112,7 +124,12 @@ export default function TaskEditDialog({
       </div>
 
       <div style={{ display: "flex", gap: 6 }}>
-        <input value={assignee} onChange={(e) => setAssignee(e.target.value)} placeholder={t("assignee")} style={{ ...inputStyle, flex: 1 }} />
+        <select value={assignee} onChange={(e) => setAssignee(e.target.value)} style={{ ...inputStyle, flex: 1 }}>
+          <option value="">{t("assigneeNone")}</option>
+          {assigneeOptions.map((u) => (
+            <option key={u.id} value={u.name}>{u.name || u.email}</option>
+          ))}
+        </select>
         <input type="date" value={due} onChange={(e) => setDue(e.target.value)} style={{ ...inputStyle, width: 140 }} />
       </div>
 

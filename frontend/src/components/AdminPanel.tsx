@@ -9,6 +9,8 @@ import {
   restoreTask,
   purgeBoard,
   purgeTask,
+  restoreWorkspace,
+  purgeWorkspace,
   createStatus,
   updateStatus,
   deleteStatus,
@@ -274,7 +276,16 @@ function TrashTab() {
     mutationFn: (id: string) => purgeTask(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["trash"] }),
   });
+  const restoreWsMut = useMutation({
+    mutationFn: (id: string) => restoreWorkspace(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["trash"] }); qc.invalidateQueries({ queryKey: ["workspaces"] }); qc.invalidateQueries({ queryKey: ["boards"] }); qc.invalidateQueries({ queryKey: ["tasks"] }); },
+  });
+  const purgeWsMut = useMutation({
+    mutationFn: (id: string) => purgeWorkspace(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["trash"] }),
+  });
 
+  const workspaces = trash?.workspaces || [];
   const boards = trash?.boards || [];
   const tasks = trash?.tasks || [];
 
@@ -282,8 +293,23 @@ function TrashTab() {
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{t("trashHint")}</div>
 
-      {boards.length === 0 && tasks.length === 0 && (
+      {workspaces.length === 0 && boards.length === 0 && tasks.length === 0 && (
         <div style={{ fontSize: 11, color: "var(--text-faint)", textAlign: "center", padding: 16 }}>{t("trashEmpty")}</div>
+      )}
+
+      {workspaces.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, letterSpacing: 0.4 }}>{t("boardsMenu").toUpperCase()}</div>
+          {workspaces.map((w) => (
+            <div key={w.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, padding: "5px 8px", border: "1px solid var(--border)", borderRadius: 4, flexWrap: "wrap" }}>
+              <span style={{ flex: 1, minWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{w.name}</span>
+              <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 99, background: "#6b728022", border: "1px solid var(--border)", color: "var(--text-muted)" }}>{w.board_count}</span>
+              <span style={{ fontSize: 10, color: "var(--text-faint)", whiteSpace: "nowrap" }}>{w.expires_in_days} {t("daysLeft")}</span>
+              <button onClick={() => restoreWsMut.mutate(w.id)} style={{ ...btnStyle, fontSize: 10, padding: "3px 8px", color: "#22c55e", borderColor: "#22c55e55" }}>{t("restore")}</button>
+              <button onClick={() => { if (confirm(t("deleteForeverWarning"))) purgeWsMut.mutate(w.id); }} style={{ ...btnStyle, fontSize: 10, padding: "3px 8px", color: "#ef4444", borderColor: "#ef444455" }}>{t("deleteForever")}</button>
+            </div>
+          ))}
+        </div>
       )}
 
       {boards.length > 0 && (

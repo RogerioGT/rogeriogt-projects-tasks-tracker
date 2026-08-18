@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchBoardTree, fetchStatuses, BoardTreeNode } from "../api";
+import { fetchBoardTree, fetchStatuses, fetchAssignees, BoardTreeNode } from "../api";
+import { useWorkspace } from "../workspace";
 import { useI18n } from "../i18n";
 
 export type Filters = {
@@ -58,8 +59,16 @@ export default function FilterBar({
   showBoardScope?: boolean;
 }) {
   const { t } = useI18n();
-  const { data: tree } = useQuery({ queryKey: ["boards", "tree"], queryFn: fetchBoardTree });
+  const { currentId: wsId } = useWorkspace();
+  const { data: tree } = useQuery({ queryKey: ["boards", "tree", wsId], queryFn: () => fetchBoardTree(wsId || undefined) });
   const { data: statuses } = useQuery({ queryKey: ["statuses"], queryFn: fetchStatuses });
+
+  const scopeId = filters.project || filters.company;
+  const { data: assignees } = useQuery({
+    queryKey: ["assignees", scopeId],
+    queryFn: () => fetchAssignees(scopeId),
+    enabled: !!scopeId,
+  });
 
   const { scopes, projectsFor } = useMemo(() => {
     const flat = flattenTree(tree || []);
@@ -123,12 +132,21 @@ export default function FilterBar({
         <option value="low">{t("low")}</option>
         <option value="none">{t("none")}</option>
       </select>
-      <input
-        value={filters.assignee}
-        onChange={(e) => set({ assignee: e.target.value })}
-        placeholder={t("assignee")}
-        style={inpStyle}
-      />
+      {scopeId ? (
+        <select value={filters.assignee} onChange={(e) => set({ assignee: e.target.value })} style={selStyle}>
+          <option value="">{t("assignee")}: {t("all")}</option>
+          {(assignees || []).map((u) => (
+            <option key={u.id} value={u.name}>{u.name || u.email}</option>
+          ))}
+        </select>
+      ) : (
+        <input
+          value={filters.assignee}
+          onChange={(e) => set({ assignee: e.target.value })}
+          placeholder={t("assignee")}
+          style={inpStyle}
+        />
+      )}
       <select value={filters.sort} onChange={(e) => set({ sort: e.target.value })} style={selStyle}>
         <option value="position">{t("sortBy")}: {t("manual")}</option>
         <option value="created_at">{t("sortBy")}: {t("newestFirst")}</option>

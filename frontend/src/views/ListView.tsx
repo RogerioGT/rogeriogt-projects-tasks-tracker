@@ -15,7 +15,7 @@ export default function ListView({ search }: { search: string }) {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
-  const { data: boards } = useQuery({ queryKey: ["boards", "flat"], queryFn: fetchBoards });
+  const { data: boards } = useQuery({ queryKey: ["boards", "flat"], queryFn: () => fetchBoards() });
   const boardName = useMemo(() => {
     const m = new Map<string, string>();
     (boards || []).forEach((b) => m.set(b.id, b.name));

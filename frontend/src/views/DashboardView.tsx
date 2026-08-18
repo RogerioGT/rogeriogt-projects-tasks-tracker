@@ -30,7 +30,7 @@ function SectionBars({ sections, tasksPerSection }: { sections: BoardTreeNode[];
 export default function DashboardView() {
   const { t } = useI18n();
   const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: fetchStats });
-  const { data: tree } = useQuery({ queryKey: ["boards", "tree"], queryFn: fetchBoardTree });
+  const { data: tree } = useQuery({ queryKey: ["boards", "tree"], queryFn: () => fetchBoardTree() });
   const { data: tasks } = useQuery({ queryKey: ["tasks", "all"], queryFn: () => fetchTasks({ sort: "position" }) });
 
   // per-section counts: for each top-level section, count tasks whose board is in its subtree

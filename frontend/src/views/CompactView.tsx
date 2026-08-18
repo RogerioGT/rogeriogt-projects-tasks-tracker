@@ -10,7 +10,7 @@ const priorityDot: Record<string, string> = { high: "#ef4444", medium: "#f97316"
 export default function CompactView({ search }: { search: string }) {
   const { t } = useI18n();
   const qc = useQueryClient();
-  const { data: boards } = useQuery({ queryKey: ["boards", "flat"], queryFn: fetchBoards });
+  const { data: boards } = useQuery({ queryKey: ["boards", "flat"], queryFn: () => fetchBoards() });
   const boardName = new Map((boards || []).map((b) => [b.id, b.name]));
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
 

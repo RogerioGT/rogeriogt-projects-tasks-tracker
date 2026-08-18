@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider, useI18n } from "./i18n";
 import { AuthProvider, useAuth } from "./auth";
+import { WorkspaceProvider } from "./workspace";
 import BoardView from "./views/BoardView";
 import KanbanView from "./views/KanbanView";
 import ListView from "./views/ListView";
@@ -10,6 +11,7 @@ import DashboardView from "./views/DashboardView";
 import HistoryView from "./views/HistoryView";
 import AccountDialog from "./components/AccountDialog";
 import AdminPanel from "./components/AdminPanel";
+import WorkspaceSwitcher from "./components/WorkspaceSwitcher";
 
 type ViewKey = "board" | "kanban" | "list" | "compact" | "dashboard" | "history";
 
@@ -203,6 +205,7 @@ function TopBar({
         >
           {user ? (user.name || user.email.split("@")[0]) : t("login")}
         </button>
+        <WorkspaceSwitcher />
         {accountOpen && (
           <div style={{ position: "absolute", top: 40, right: 10, zIndex: 60 }} onClick={() => setAccountOpen(false)}>
             <AccountDialog onClose={() => setAccountOpen(false)} />
@@ -256,7 +259,9 @@ export default function App() {
     <QueryClientProvider client={qc}>
       <I18nProvider>
         <AuthProvider>
-          <AppInner />
+          <WorkspaceProvider>
+            <AppInner />
+          </WorkspaceProvider>
         </AuthProvider>
       </I18nProvider>
     </QueryClientProvider>

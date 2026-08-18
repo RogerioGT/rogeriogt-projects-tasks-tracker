@@ -15,6 +15,7 @@ _MIGRATIONS = [
     ("board_acl", "team_id", "ALTER TABLE board_acl ADD COLUMN team_id VARCHAR(36)"),
     ("boards", "deleted_at", "ALTER TABLE boards ADD COLUMN deleted_at DATETIME"),
     ("tasks", "deleted_at", "ALTER TABLE tasks ADD COLUMN deleted_at DATETIME"),
+    ("boards", "workspace_id", "ALTER TABLE boards ADD COLUMN workspace_id VARCHAR(36)"),
 ]
 
 

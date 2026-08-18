@@ -1,6 +1,6 @@
 # Rogerio's Projects & Tasks Tracker — Build Plan
 
-> **Status:** v1.6 — v1.5 + full security/logic audit (sharing permissions, auth on user list, purge crash fix, PATCH hardening, trashed-entity guards, auto-color, MCP reorder fix).
+> **Status:** v1.8 — v1.7 + full profile management (name/email/phone/password), login rate limiting, security headers, stricter CORS.
 > **Author:** Hermes (vibecoding profile) with Rogerio.
 > **Coding engine:** Hermes direct (backend) + React/TS frontend. MCP SDK v2.
 

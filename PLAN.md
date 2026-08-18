@@ -1,6 +1,6 @@
 # Rogerio's Projects & Tasks Tracker — Build Plan
 
-> **Status:** v1.3 — v1.2 + hierarchy kind conversion (project/company/section) + soft delete with 30-day Trash.
+> **Status:** v1.4 — v1.3 + complete MCP coverage (42 tools, every API action drivable from chat).
 > **Author:** Hermes (vibecoding profile) with Rogerio.
 > **Coding engine:** Hermes direct (backend) + React/TS frontend. MCP SDK v2.
 

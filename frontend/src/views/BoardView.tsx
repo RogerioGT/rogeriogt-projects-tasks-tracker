@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { fetchBoardTree, fetchTasks, fetchStatuses, createTask, toggleComplete, updateTask, createBoard, updateBoard, deleteBoard, deleteTask, Task, fetchBoards, BoardTreeNode } from "../api";
+import { fetchBoardTree, fetchTasks, fetchStatuses, createTask, toggleComplete, updateTask, createBoard, updateBoard, deleteBoard, deleteTask, convertTaskToProject, Task, fetchBoards, BoardTreeNode } from "../api";
 import { useI18n } from "../i18n";
 import ShareDialog from "../components/ShareDialog";
 
@@ -25,12 +25,14 @@ function TaskRow({
   onUpdate,
   onDelete,
   onShare,
+  onConvert,
 }: {
   task: Task;
   onToggle: () => void;
   onUpdate: (patch: Partial<Task>) => void;
   onDelete: () => void;
   onShare: () => void;
+  onConvert: () => void;
 }) {
   const { t } = useI18n();
   const { data: statuses } = useQuery({ queryKey: ["statuses"], queryFn: fetchStatuses });
@@ -148,8 +150,9 @@ function TaskRow({
             <input type="date" value={editDue} onChange={(e) => setEditDue(e.target.value)} style={inputStyle} />
           </div>
           <input value={editTags} onChange={(e) => setEditTags(e.target.value)} placeholder={t("tags") + " (comma separated)"} style={inputStyle} />
-          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
             <button onClick={onShare} style={{ ...btnStyle }}>{t("share")}</button>
+            <button onClick={onConvert} style={{ ...btnStyle }}>{t("convertToProject")}</button>
             <button onClick={onDelete} style={{ ...btnStyle, color: "#ef4444", borderColor: "#ef444455" }}>{t("delete")}</button>
             <button onClick={() => setOpen(false)} style={btnStyle}>{t("cancel")}</button>
             <button onClick={save} style={{ ...btnStyle, background: "#3b82f6", color: "#fff", borderColor: "#3b82f6" }}>{t("save")}</button>
@@ -212,6 +215,13 @@ function Column({
   const toggleMut = useMutation({
     mutationFn: (id: string) => toggleComplete(id),
     onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+  });
+  const convertMut = useMutation({
+    mutationFn: (id: string) => convertTaskToProject(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["boards"] });
+    },
   });
   const updateMut = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Partial<Task> }) => updateTask(id, patch as never),
@@ -319,14 +329,14 @@ function Column({
                   const task = active[vi.index];
                   return (
                     <div key={task.id} style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vi.start}px)`, paddingBottom: 4 }}>
-                      <TaskRow task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} />
+                      <TaskRow task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} />
                     </div>
                   );
                 })}
               </div>
             ) : (
               active.map((task) => (
-                <TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} />
+                <TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} />
               ))
             )}
           </div>
@@ -336,7 +346,7 @@ function Column({
               <button onClick={() => setShowCompleted(!showCompleted)} style={{ fontSize: 10, color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer", width: "100%", textAlign: "left", padding: "2px 0" }}>
                 {showCompleted ? "▾" : "▸"} {t("completed")} ({done.length})
               </button>
-              {showCompleted && <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4, opacity: 0.75 }}>{done.map((task) => (<TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} />))}</div>}
+              {showCompleted && <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4, opacity: 0.75 }}>{done.map((task) => (<TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} />))}</div>}
             </div>
           )}
         </>

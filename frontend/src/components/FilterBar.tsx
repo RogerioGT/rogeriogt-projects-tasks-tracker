@@ -9,9 +9,10 @@ export type Filters = {
   status: string;
   priority: string;
   assignee: string;
+  sort: string; // position | created_at | due_date | title | priority | status
 };
 
-export const EMPTY_FILTERS: Filters = { company: "", project: "", status: "", priority: "", assignee: "" };
+export const EMPTY_FILTERS: Filters = { company: "", project: "", status: "", priority: "", assignee: "", sort: "position" };
 
 const selStyle: React.CSSProperties = {
   fontSize: 11,
@@ -100,13 +101,21 @@ export default function FilterBar({
         placeholder={t("assignee")}
         style={inpStyle}
       />
+      <select value={filters.sort} onChange={(e) => set({ sort: e.target.value })} style={selStyle}>
+        <option value="position">{t("sortBy")}: {t("manual")}</option>
+        <option value="created_at">{t("sortBy")}: {t("newestFirst")}</option>
+        <option value="due_date">{t("sortBy")}: {t("dueDate")}</option>
+        <option value="title">{t("sortBy")}: {t("title")}</option>
+        <option value="priority">{t("sortBy")}: {t("priority")}</option>
+        <option value="status">{t("sortBy")}: {t("status")}</option>
+      </select>
     </div>
   );
 }
 
 /** Build the backend query params for the current filter selection. */
 export function filtersToQuery(filters: Filters) {
-  const params: { board_id?: string; include_descendants?: boolean; status?: string; priority?: string; assignee?: string } = {};
+  const params: { board_id?: string; include_descendants?: boolean; status?: string; priority?: string; assignee?: string; sort?: string } = {};
   if (filters.project) {
     params.board_id = filters.project;
   } else if (filters.company) {
@@ -116,5 +125,6 @@ export function filtersToQuery(filters: Filters) {
   if (filters.status) params.status = filters.status;
   if (filters.priority) params.priority = filters.priority;
   if (filters.assignee) params.assignee = filters.assignee;
+  if (filters.sort) params.sort = filters.sort;
   return params;
 }

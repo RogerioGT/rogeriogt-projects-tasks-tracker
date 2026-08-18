@@ -190,6 +190,10 @@ export function moveTask(id: string, payload: { board_id: string; position?: num
   return req<Task>(`/tasks/${id}/move`, { method: "POST", body: JSON.stringify(payload) });
 }
 
+export function convertTaskToProject(id: string) {
+  return req<{ board: Board; task: Task }>(`/tasks/${id}/convert`, { method: "POST" });
+}
+
 export function deleteTask(id: string) {
   return req<void>(`/tasks/${id}`, { method: "DELETE" });
 }

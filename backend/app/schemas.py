@@ -80,6 +80,12 @@ class TaskMove(BaseModel):
     position: int | None = None
 
 
+class TaskConvertOut(BaseModel):
+    """Result of converting a task into a project board."""
+    board: BoardOut
+    task: TaskOut
+
+
 class EventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str

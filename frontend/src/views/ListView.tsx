@@ -28,7 +28,6 @@ export default function ListView({ search }: { search: string }) {
       fetchTasks({
         ...filtersToQuery(filters),
         search: search || undefined,
-        sort: "created_at",
       }),
   });
 

@@ -16,7 +16,7 @@ export default function CompactView({ search }: { search: string }) {
 
   const { data: tasks } = useQuery({
     queryKey: ["tasks", "compact", search, filters],
-    queryFn: () => fetchTasks({ ...filtersToQuery(filters), search: search || undefined, sort: "created_at" }),
+    queryFn: () => fetchTasks({ ...filtersToQuery(filters), search: search || undefined }),
   });
 
   const [title, setTitle] = useState("");

@@ -13,7 +13,7 @@ from ..access import board_permission, task_permission, visible_task_ids
 from ..db import get_db
 from ..deps import get_current_user
 from ..models import Board, Event, Task, User
-from ..schemas import TaskCreate, TaskMove, TaskOut, TaskUpdate
+from ..schemas import BoardOut, TaskCreate, TaskConvertOut, TaskMove, TaskOut, TaskUpdate
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -75,13 +75,14 @@ def list_tasks(
         q = q.where(Task.due_date >= due_after)
 
     col = sort if sort in SORTABLE else "position"
-    order = getattr(Task, col)
     if sort == "created_at":
-        order = order.desc()  # newest first
+        order = getattr(Task, col).desc()  # newest first
+    elif sort == "due_date":
+        order = getattr(Task, col).asc().nulls_last()  # undated tasks at the end
     elif sort == "position":
-        order = order.asc()   # 0 = top
+        order = getattr(Task, col).asc()   # 0 = top
     else:
-        order = order.asc()
+        order = getattr(Task, col).asc()
     q = q.order_by(order)
 
     # semantic ordering for priority/status handled in Python for clarity
@@ -102,6 +103,10 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db), user: User =
         raise HTTPException(404, "board not found")
     if board_permission(db, user, payload.board_id) != "edit":
         raise HTTPException(403, "no edit permission on this board")
+    # new tasks go on top: shift existing tasks in this board down by one
+    existing = db.scalars(select(Task).where(Task.board_id == payload.board_id)).all()
+    for t in existing:
+        t.position += 1
     task = Task(
         board_id=payload.board_id,
         title=payload.title,
@@ -111,7 +116,7 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db), user: User =
         assignee=payload.assignee,
         due_date=payload.due_date,
         tags=payload.tags,
-        position=0,  # new tasks always on top
+        position=0,  # top of the board
         created_by=user.id,
     )
     db.add(task)
@@ -183,6 +188,46 @@ def move_task(task_id: str, payload: TaskMove, db: Session = Depends(get_db), us
     db.commit()
     db.refresh(task)
     return task
+
+
+@router.post("/{task_id}/convert", response_model=TaskConvertOut, status_code=201)
+def convert_to_project(task_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Turn a task into a project board: creates a new board named after the
+    task, nested under the task's current board, and moves the task into it.
+    The task becomes the first task of the new project; more sub-tasks can be
+    added to it like any other board."""
+    task = db.get(Task, task_id)
+    if not task:
+        raise HTTPException(404, "task not found")
+    if task_permission(db, user, task_id) != "edit":
+        raise HTTPException(403, "no edit permission on this task")
+    parent = db.get(Board, task.board_id)
+    if not parent:
+        raise HTTPException(404, "parent board not found")
+    if board_permission(db, user, parent.id) != "edit":
+        raise HTTPException(403, "no edit permission on the task's board")
+
+    new_board = Board(
+        name=task.title[:200],
+        parent_id=parent.id,
+        kind="project",
+        color=parent.color or "#64748b",
+        sort_order=0,
+        created_by=user.id,
+    )
+    db.add(new_board)
+    db.flush()
+    old_board = task.board_id
+    task.board_id = new_board.id
+    task.position = 0
+    _log(db, "board", new_board.id, "create", user_id=user.id,
+         field="from_task", new=task.id)
+    _log(db, "task", task_id, "convert", user_id=user.id,
+         field="board_id", old=old_board, new=new_board.id)
+    db.commit()
+    db.refresh(task)
+    db.refresh(new_board)
+    return {"board": new_board, "task": task}
 
 
 @router.delete("/{task_id}", status_code=204)

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchStatuses, fetchBoards, updateTask, deleteTask, Task } from "../api";
+import { fetchStatuses, fetchBoards, updateTask, deleteTask, convertTaskToProject, Task } from "../api";
 import { useI18n } from "../i18n";
 import ShareDialog from "./ShareDialog";
 
@@ -72,6 +72,16 @@ export default function TaskEditDialog({
     },
   });
 
+  const convertMut = useMutation({
+    mutationFn: () => convertTaskToProject(task.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      qc.invalidateQueries({ queryKey: ["boards"] });
+      onClose();
+    },
+    onError: (e) => setError(e instanceof Error ? e.message : String(e)),
+  });
+
   // status names: union of defined statuses + the task's own status
   const statusNames = new Set<string>((statuses || []).map((s) => s.name));
   statusNames.add(task.status);
@@ -110,8 +120,9 @@ export default function TaskEditDialog({
 
       {error && <div style={{ fontSize: 10, color: "#ef4444" }}>{error}</div>}
 
-      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
         <button onClick={() => setShareOpen(true)} style={btnStyle}>{t("share")}</button>
+        <button onClick={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(); }} style={btnStyle}>{t("convertToProject")}</button>
         <button onClick={() => { if (confirm(t("confirmDelete"))) deleteMut.mutate(); }} style={{ ...btnStyle, color: "#ef4444", borderColor: "#ef444455" }}>{t("delete")}</button>
         <button onClick={onClose} style={btnStyle}>{t("cancel")}</button>
         <button onClick={() => updateMut.mutate()} disabled={!title.trim()} style={{ ...btnStyle, background: "#3b82f6", color: "#fff", borderColor: "#3b82f6", opacity: title.trim() ? 1 : 0.5 }}>{t("save")}</button>

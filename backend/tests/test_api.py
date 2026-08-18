@@ -160,6 +160,58 @@ def main():
         c.post(f"/api/teams/{team_id}/members", json={"user_id": bob_id}, headers=admin)
         assert c.post(f"/api/teams/{team_id}/members", json={"user_id": bob_id}, headers=admin).status_code == 409
 
+        # ── Task -> project conversion ─────────────────────────────
+        r = c.post("/api/tasks", json={"board_id": project_id, "title": "Grows into a project"}, headers=admin)
+        grow_id = r.json()["id"]
+        r = c.post(f"/api/tasks/{grow_id}/convert", headers=admin)
+        assert r.status_code == 201, r.text
+        body = r.json()
+        new_board_id = body["board"]["id"]
+        assert body["board"]["name"] == "Grows into a project"
+        assert body["board"]["kind"] == "project"
+        assert body["board"]["parent_id"] == project_id
+        assert body["task"]["board_id"] == new_board_id, "task must move into the new project"
+        # sub-tasks can now be added under the new project board
+        r = c.post("/api/tasks", json={"board_id": new_board_id, "title": "Sub task one"}, headers=admin)
+        assert r.status_code == 201
+        r = c.post("/api/tasks", json={"board_id": new_board_id, "title": "Sub task two"}, headers=admin)
+        assert r.status_code == 201
+        subtasks = [t for t in c.get("/api/tasks", headers=admin).json() if t["board_id"] == new_board_id]
+        assert len(subtasks) == 3, "original task + 2 sub-tasks"
+        # non-editors cannot convert
+        assert c.post(f"/api/tasks/{grow_id}/convert", headers=carol).status_code == 403
+
+        # ── Sorting verification ───────────────────────────────────
+        # create tasks with known titles/priorities/due dates on the project
+        dates = ["2026-03-01", "2026-01-01", "2026-02-01", None]
+        for i, d in enumerate(dates):
+            c.post("/api/tasks", json={
+                "board_id": project_id,
+                "title": f"Sort test {i}",
+                "priority": ["medium", "high", "low", "none"][i],
+                "due_date": d,
+            }, headers=admin)
+        st = c.get("/api/tasks?board_id=" + project_id, headers=admin).json()
+        titles = [t["title"] for t in st]
+        assert titles[0] == "Sort test 3", f"position sort should put newest first, got {titles}"
+        # title sort ascending
+        st = c.get(f"/api/tasks?board_id={project_id}&sort=title", headers=admin).json()
+        tsorted = sorted([t["title"] for t in st])
+        assert [t["title"] for t in st] == tsorted, "title sort must be alphabetical"
+        # priority sort semantic (high first)
+        st = c.get(f"/api/tasks?board_id={project_id}&sort=priority", headers=admin).json()
+        prios = [t["priority"] for t in st]
+        assert prios[0] == "high" and prios[-1] == "none", f"priority order wrong: {prios}"
+        # due_date sort: earliest first, nulls last
+        st = c.get(f"/api/tasks?board_id={project_id}&sort=due_date", headers=admin).json()
+        dues = [t["due_date"] for t in st]
+        non_null = [d for d in dues if d]
+        assert non_null == sorted(non_null), f"due_date must be ascending, got {dues}"
+        assert dues[-1] is None or all(dues[-1:] and d is None for d in dues[-1:]), "nulls should sort last"
+        # status sort semantic
+        st = c.get(f"/api/tasks?board_id={project_id}&sort=status", headers=admin).json()
+        assert st[0]["status"] in ("in_progress", "waiting", "not_started", "done")
+
         print("ALL API TESTS PASS")
         print(f"  users: admin + bob + carol; team: {team_id}")
         print(f"  boards: company + project; tasks: secret + 2 batch; custom status flow verified")

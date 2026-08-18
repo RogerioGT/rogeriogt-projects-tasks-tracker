@@ -134,9 +134,10 @@ def list_tasks(
     priority: str | None = None,
     assignee: str | None = None,
     search: str | None = None,
+    sort: str | None = None,
 ) -> dict:
-    """board accepts a board name or id. status: not_started|in_progress|waiting|done.
-    priority: high|medium|low|none."""
+    """board accepts a board name or id. status: not_started|in_progress|waiting|done (or custom).
+    priority: high|medium|low|none. sort: position|created_at|due_date|title|priority|status."""
     params = {}
     if board:
         b = _resolve_board(board)
@@ -150,6 +151,8 @@ def list_tasks(
         params["assignee"] = assignee
     if search:
         params["search"] = search
+    if sort:
+        params["sort"] = sort
     qs = "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in params.items())
     path = f"/api/tasks?{qs}" if qs else "/api/tasks"
     tasks = _get(path)
@@ -220,6 +223,12 @@ def move_task(task_id: str, board: str) -> dict:
     """board is the destination board name or id."""
     b = _resolve_board(board)
     return _post(f"/api/tasks/{task_id}/move", {"board_id": b["id"]})
+
+
+@mcp.tool(description="Turn a task into a project board (task becomes its first task; add sub-tasks to it).")
+def convert_task_to_project(task_id: str) -> dict:
+    """The new board is nested under the task's current board and named after the task."""
+    return _post(f"/api/tasks/{task_id}/convert")
 
 
 @mcp.tool(description="Delete a task by id.")

@@ -512,10 +512,28 @@ export default function BoardView({ search }: { search: string }) {
   const [dropTarget, setDropTarget] = useState<{ boardId: string; before: boolean } | null>(null);
   const [sectionDrop, setSectionDrop] = useState<{ sectionId: string; before: boolean } | null>(null);
   const [sectionDropTarget, setSectionDropTarget] = useState<{ sectionId: string; before: boolean } | null>(null);
+  const [sectionMenu, setSectionMenu] = useState<{ id: string; top: number; left: number } | null>(null);
+  const [sectionEdit, setSectionEdit] = useState<{ id: string; name: string; color: string } | null>(null);
+  const [sectionShareId, setSectionShareId] = useState<string | null>(null);
 
   const createBoardMut = useMutation({
     mutationFn: () => createBoard({ name: newBoardName, parent_id: addParent, kind: addParent ? "project" : "section", sort_order: 0 }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["boards"] }); setAddParent(null); setNewBoardName(""); },
+  });
+
+  const updateSectionMut = useMutation({
+    mutationFn: ({ id, name, color }: { id: string; name: string; color: string }) => updateBoard(id, { name, color }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["boards"] }); setSectionEdit(null); },
+  });
+
+  const deleteSectionMut = useMutation({
+    mutationFn: (id: string) => deleteBoard(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["boards"] }),
+  });
+
+  const convertSectionMut = useMutation({
+    mutationFn: ({ id, kind }: { id: string; kind: "section" | "company" | "project" }) => convertBoardKind(id, kind),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["boards"] }),
   });
 
   const moveBoardMut = useMutation({
@@ -591,6 +609,25 @@ export default function BoardView({ search }: { search: string }) {
               ? `inset 0 ${sectionDropTarget.before ? "3px" : "-3px"} 0 #3b82f6`
               : undefined,
           }}
+          onDragOver={(e) => {
+            if (!draggedId || draggedId === section.id) return;
+            const draggedBoard = boardById.get(draggedId);
+            if (draggedBoard?.parent_id !== null) return;  // column drags: inner area handles
+            e.preventDefault();
+            e.stopPropagation();
+            const rect = e.currentTarget.getBoundingClientRect();
+            const before = e.clientY < rect.top + rect.height / 2;
+            setSectionDropTarget({ sectionId: section.id, before });
+          }}
+          onDrop={(e) => {
+            const draggedBoard = boardById.get(draggedId || "");
+            if (!draggedBoard || draggedBoard.parent_id !== null) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const id = draggedId || e.dataTransfer.getData("text/plain");
+            if (id && id !== section.id) handleDropSectionReorder(id, section.id, sectionDropTarget?.before ?? false);
+            setSectionDropTarget(null);
+          }}
         >
           <div
             draggable
@@ -600,26 +637,6 @@ export default function BoardView({ search }: { search: string }) {
               setDraggedId(section.id);
             }}
             onDragEnd={() => { setDraggedId(null); setSectionDropTarget(null); setDropTarget(null); setSectionDrop(null); }}
-            onDragOver={(e) => {
-              if (!draggedId || draggedId === section.id) return;
-              const draggedBoard = boardById.get(draggedId);
-              const isSectionDrag = draggedBoard?.parent_id === null;
-              if (!isSectionDrag) return;  // column drags: let the columns area handle it
-              e.preventDefault();
-              e.stopPropagation();
-              const rect = e.currentTarget.getBoundingClientRect();
-              const before = e.clientY < rect.top + rect.height / 2;
-              setSectionDropTarget({ sectionId: section.id, before });
-            }}
-            onDrop={(e) => {
-              const draggedBoard = boardById.get(draggedId || "");
-              if (!draggedBoard || draggedBoard.parent_id !== null) return;  // only section reorder here
-              e.preventDefault();
-              e.stopPropagation();
-              const id = draggedId || e.dataTransfer.getData("text/plain");
-              if (id && id !== section.id) handleDropSectionReorder(id, section.id, sectionDropTarget?.before ?? false);
-              setSectionDropTarget(null);
-            }}
             style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: section.color, color: "#fff", cursor: "grab" }}
           >
             <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.2 }}>{section.name}</span>
@@ -627,6 +644,14 @@ export default function BoardView({ search }: { search: string }) {
             <div style={{ flex: 1 }} />
             <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setAddParent(section.id); }} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer" }}>
               + {t("addColumn")}
+            </button>
+            <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => {
+              e.stopPropagation();
+              const r = e.currentTarget.getBoundingClientRect();
+              if (sectionMenu?.id === section.id) setSectionMenu(null);
+              else setSectionMenu({ id: section.id, top: Math.min(r.bottom + 4, window.innerHeight - 230), left: Math.max(8, Math.min(r.right - 190, window.innerWidth - 200)) });
+            }} style={{ fontSize: 14, padding: "0 6px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer", lineHeight: "20px" }}>
+              ⋯
             </button>
           </div>
 
@@ -678,6 +703,57 @@ export default function BoardView({ search }: { search: string }) {
         <span style={{ fontSize: 10, color: "var(--text-faint)", alignSelf: "center" }}>{(flatBoards || []).length} boards · {(tasks as Task[]).length} tasks</span>
         <span style={{ fontSize: 10, color: "var(--text-faint)", alignSelf: "center" }}>{t("dragHint")}</span>
       </div>
+
+      {sectionMenu && (() => {
+        const sec = (tree as BoardTreeNode[]).find((s) => s.id === sectionMenu.id);
+        if (!sec) return null;
+        const btnStyle2: React.CSSProperties = { fontSize: 11, padding: "4px 8px", border: "1px solid var(--border)", borderRadius: 4, background: "var(--bg)", color: "var(--text)", cursor: "pointer", width: "100%", textAlign: "left" };
+        return (
+          <>
+            <div style={{ position: "fixed", inset: 0, zIndex: 59 }} onClick={() => setSectionMenu(null)} />
+            <div style={{ position: "fixed", top: sectionMenu.top, left: sectionMenu.left, zIndex: 60, width: 190, background: "var(--bg-elevated)", border: "1px solid var(--border-strong)", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,0.5)", padding: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", padding: "2px 4px" }}>{sec.name}</div>
+              <button onMouseDown={(e) => e.stopPropagation()} onClick={() => { setSectionEdit({ id: sec.id, name: sec.name, color: sec.color }); setSectionMenu(null); }} style={btnStyle2}>{t("rename")}</button>
+              <button onMouseDown={(e) => e.stopPropagation()} onClick={() => { setSectionShareId(sec.id); setSectionMenu(null); }} style={btnStyle2}>{t("share")}</button>
+              {sec.kind !== "company" && (
+                <button onMouseDown={(e) => e.stopPropagation()} onClick={() => { if (confirm(t("convertBoardConfirm"))) convertSectionMut.mutate({ id: sec.id, kind: "company" }); setSectionMenu(null); }} style={btnStyle2}>{t("convertTo")} → {t("company")}</button>
+              )}
+              {sec.kind !== "project" && (
+                <button onMouseDown={(e) => e.stopPropagation()} onClick={() => { if (confirm(t("convertBoardConfirm"))) convertSectionMut.mutate({ id: sec.id, kind: "project" }); setSectionMenu(null); }} style={btnStyle2}>{t("convertTo")} → {t("project")}</button>
+              )}
+              <button onMouseDown={(e) => e.stopPropagation()} onClick={() => { if (confirm(`${t("deleteBoardWarning")}\n\n"${sec.name}" — ${t("trashHint")}`)) deleteSectionMut.mutate(sec.id); setSectionMenu(null); }} style={{ ...btnStyle2, color: "#ef4444", borderColor: "#ef444455" }}>{t("delete")}</button>
+            </div>
+          </>
+        );
+      })()}
+
+      {sectionEdit && (
+        <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setSectionEdit(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, padding: 16, minWidth: 320, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>{t("rename")} — {sectionEdit.name}</div>
+            <input value={sectionEdit.name} onChange={(e) => setSectionEdit({ ...sectionEdit, name: e.target.value })} placeholder={t("title")} autoFocus style={inputStyle} onKeyDown={(e) => { if (e.key === "Enter") updateSectionMut.mutate(sectionEdit); }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{t("color")}</span>
+              <input type="color" value={sectionEdit.color} onChange={(e) => setSectionEdit({ ...sectionEdit, color: e.target.value })} style={{ width: 48, height: 28, padding: 0, border: "1px solid var(--border)", borderRadius: 4, background: "var(--bg)", cursor: "pointer" }} />
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setSectionEdit(null)} style={btnStyle}>{t("cancel")}</button>
+              <button onClick={() => updateSectionMut.mutate(sectionEdit)} style={{ ...btnStyle, background: "#3b82f6", color: "#fff", borderColor: "#3b82f6" }}>{t("save")}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sectionShareId && (
+        <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setSectionShareId(null)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, minWidth: 340, maxWidth: "calc(100vw - 20px)" }}>
+            <ShareDialog
+              scope={{ type: "board", boardId: sectionShareId, boardName: boardMap.get(sectionShareId)?.name || "" }}
+              onClose={() => setSectionShareId(null)}
+            />
+          </div>
+        </div>
+      )}
 
       {addParent !== null && (
         <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setAddParent(null)}>

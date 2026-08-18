@@ -48,6 +48,7 @@ const dict: Dict = {
   addColumn: { en: "Add column", es: "Agregar columna" },
   rename: { en: "Rename", es: "Renombrar" },
   recolor: { en: "Recolor", es: "Cambiar color" },
+  color: { en: "Color", es: "Color" },
   archive: { en: "Archive", es: "Archivar" },
   newTaskBtn: { en: "+ New task", es: "+ Nueva tarea" },
   description: { en: "Description", es: "Descripcion" },

@@ -23,10 +23,19 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def bootstrap_admin(db: Session) -> None:
-    """Create the admin account from env vars if no real (password-bearing) user exists."""
-    if db.scalars(select(User).where(User.password_hash.isnot(None))).first():
-        return
+    """Ensure the admin account exists and has the admin role.
+
+    Creates it from env vars if no password-bearing user exists, and promotes
+    the ADMIN_EMAIL user on every startup (covers upgrades where is_admin
+    was added after the account was created).
+    """
     email = os.environ.get("ADMIN_EMAIL", "admin@rogeriogt.com").strip().lower()
+    existing = db.scalars(select(User).where(User.email == email)).first()
+    if existing is not None:
+        if not existing.is_admin:
+            existing.is_admin = True
+            db.commit()
+        return
     password = os.environ.get("ADMIN_PASSWORD")
     if not password:
         return  # nothing to do until credentials are supplied

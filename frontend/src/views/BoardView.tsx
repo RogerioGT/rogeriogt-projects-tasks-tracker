@@ -508,6 +508,8 @@ export default function BoardView({ search }: { search: string }) {
 
   const [addParent, setAddParent] = useState<string | null>(null);
   const [newBoardName, setNewBoardName] = useState("");
+  const [newBoardColor, setNewBoardColor] = useState("");
+  const [addSectionOpen, setAddSectionOpen] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ boardId: string; before: boolean } | null>(null);
   const [sectionDrop, setSectionDrop] = useState<{ sectionId: string; before: boolean } | null>(null);
@@ -517,8 +519,8 @@ export default function BoardView({ search }: { search: string }) {
   const [sectionShareId, setSectionShareId] = useState<string | null>(null);
 
   const createBoardMut = useMutation({
-    mutationFn: () => createBoard({ name: newBoardName, parent_id: addParent, kind: addParent ? "project" : "section", sort_order: 0 }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["boards"] }); setAddParent(null); setNewBoardName(""); },
+    mutationFn: () => createBoard({ name: newBoardName, parent_id: addParent, kind: addParent ? "project" : "section", color: newBoardColor || undefined, sort_order: 0 }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["boards"] }); setAddParent(null); setAddSectionOpen(false); setNewBoardName(""); setNewBoardColor(""); },
   });
 
   const updateSectionMut = useMutation({
@@ -586,8 +588,9 @@ export default function BoardView({ search }: { search: string }) {
   };
 
   const addTopSection = () => {
-    const name = prompt(t("addSection"));
-    if (name?.trim()) createBoard({ name: name.trim(), kind: "section", sort_order: 0 }).then(() => qc.invalidateQueries({ queryKey: ["boards"] }));
+    setNewBoardName("");
+    setNewBoardColor("");
+    setAddSectionOpen(true);
   };
 
   if (!tree || !tasks) return <div style={{ padding: 16, fontSize: 11, color: "var(--text-muted)" }}>Loading...</div>;
@@ -755,16 +758,26 @@ export default function BoardView({ search }: { search: string }) {
         </div>
       )}
 
-      {addParent !== null && (
-        <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setAddParent(null)}>
+      {(addParent !== null || addSectionOpen) && (
+        <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => { setAddParent(null); setAddSectionOpen(false); }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, padding: 16, minWidth: 320, display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 700 }}>
               {addParent ? `${t("addProject")} — ${boardMap.get(addParent)?.name || ""}` : t("addSection")}
             </div>
             <input value={newBoardName} onChange={(e) => setNewBoardName(e.target.value)} placeholder={t("title")} autoFocus style={inputStyle} onKeyDown={(e) => { if (e.key === "Enter") createBoardMut.mutate(); }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{t("color")}:</span>
+              <input type="color" value={newBoardColor || "#3b82f6"} onChange={(e) => setNewBoardColor(e.target.value)} style={{ width: 44, height: 28, padding: 0, border: "1px solid var(--border)", borderRadius: 4, background: "var(--bg)", cursor: "pointer" }} />
+              {["#3b82f6", "#f97316", "#22c55e", "#a855f7", "#ef4444", "#14b8a6", "#eab308", "#ec4899"].map((c) => (
+                <button key={c} type="button" onClick={() => setNewBoardColor(c)} style={{ width: 18, height: 18, borderRadius: 99, background: c, border: newBoardColor === c ? "2px solid #fff" : "1px solid var(--border-strong)", cursor: "pointer", padding: 0 }} title={c} />
+              ))}
+              {newBoardColor && (
+                <button type="button" onClick={() => setNewBoardColor("")} style={{ fontSize: 10, padding: "2px 6px", border: "1px solid var(--border)", borderRadius: 4, background: "transparent", color: "var(--text-muted)", cursor: "pointer" }}>{t("auto")}</button>
+              )}
+            </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button onClick={() => setAddParent(null)} style={btnStyle}>{t("cancel")}</button>
-              <button onClick={() => createBoardMut.mutate()} style={{ ...btnStyle, background: "#3b82f6", color: "#fff", borderColor: "#3b82f6" }}>{t("save")}</button>
+              <button onClick={() => { setAddParent(null); setAddSectionOpen(false); setNewBoardName(""); setNewBoardColor(""); }} style={btnStyle}>{t("cancel")}</button>
+              <button onClick={() => createBoardMut.mutate()} style={{ ...btnStyle, background: "#3b82f6", color: "#fff", borderColor: "#3b82f6", opacity: newBoardName.trim() ? 1 : 0.5 }} disabled={!newBoardName.trim()}>{t("save")}</button>
             </div>
           </div>
         </div>

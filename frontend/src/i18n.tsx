@@ -49,6 +49,7 @@ const dict: Dict = {
   rename: { en: "Rename", es: "Renombrar" },
   recolor: { en: "Recolor", es: "Cambiar color" },
   color: { en: "Color", es: "Color" },
+  auto: { en: "Auto", es: "Auto" },
   archive: { en: "Archive", es: "Archivar" },
   newTaskBtn: { en: "+ New task", es: "+ Nueva tarea" },
   description: { en: "Description", es: "Descripcion" },

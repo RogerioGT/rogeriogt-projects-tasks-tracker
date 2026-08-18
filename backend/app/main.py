@@ -39,6 +39,17 @@ app.include_router(statuses.router)
 _FRONTEND_DIR = Path(os.environ.get("FRONTEND_DIR", "/app/frontend/dist"))
 if _FRONTEND_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=_FRONTEND_DIR / "assets"), name="assets")
+    _public = _FRONTEND_DIR  # favicon.svg and other top-level public files
+    if (_public / "favicon.svg").is_file():
+
+        @app.get("/favicon.svg", include_in_schema=False)
+        def favicon():
+            return FileResponse(_public / "favicon.svg")
+
+        @app.get("/favicon.ico", include_in_schema=False)
+        def favicon_ico():
+            # some browsers still probe favicon.ico — serve the same icon
+            return FileResponse(_public / "favicon.svg")
 
 
 @app.on_event("startup")

@@ -1,0 +1,12 @@
+# Production deploy (tasksmgr.rogeriogt.com on 195.35.8.46)
+# Usage on the VPS: cp docker-compose.prod.yml docker-compose.override.yml
+services:
+  tasks-tracker:
+    ports:
+      - "127.0.0.1:8790:8787"   # localhost only — Caddy reverse-proxies
+    environment:
+      - DATA_DIR=/app/data
+      - REQUIRE_AUTH=true
+      - ADMIN_EMAIL=admin@rogeriogt.com
+      - ADMIN_PASSWORD=CHANGE_ME
+      - SECRET_KEY=CHANGE_ME

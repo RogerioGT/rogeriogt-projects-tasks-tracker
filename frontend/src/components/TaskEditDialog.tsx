@@ -129,7 +129,7 @@ export default function TaskEditDialog({
       </div>
 
       {shareOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70 }} onClick={() => setShareOpen(false)}>
+        <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70 }} onClick={() => setShareOpen(false)}>
           <ShareDialog scope={{ type: "task", taskIds: [task.id], label: "" }} onClose={() => setShareOpen(false)} />
         </div>
       )}

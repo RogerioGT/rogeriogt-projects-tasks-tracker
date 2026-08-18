@@ -150,7 +150,7 @@ export default function ListView({ search }: { search: string }) {
       </div>
 
       {editingTask && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }} onClick={() => setEditingTask(null)}>
+        <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }} onClick={() => setEditingTask(null)}>
           <TaskEditDialog task={editingTask} onClose={() => setEditingTask(null)} />
         </div>
       )}

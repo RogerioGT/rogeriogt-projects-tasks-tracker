@@ -212,6 +212,37 @@ def main():
         st = c.get(f"/api/tasks?board_id={project_id}&sort=status", headers=admin).json()
         assert st[0]["status"] in ("in_progress", "waiting", "not_started", "done")
 
+        # ── Board move / reorder (drag & drop) ─────────────────────
+        # create two more projects under the company
+        p2 = c.post("/api/boards", json={"name": "Proj B", "kind": "project", "parent_id": company_id}, headers=admin).json()["id"]
+        p3 = c.post("/api/boards", json={"name": "Proj C", "kind": "project", "parent_id": company_id}, headers=admin).json()["id"]
+        # reorder: move p3 to position 0 (leftmost)
+        r = c.post(f"/api/boards/{p3}/move", json={"parent_id": company_id, "position": 0}, headers=admin)
+        assert r.status_code == 200, r.text
+        order = [b["name"] for b in c.get(f"/api/boards", headers=admin).json() if b["parent_id"] == company_id]
+        assert order[0] == "Proj C", f"Proj C should be leftmost, got {order}"
+        # move a project into another project (nested move)
+        r = c.post(f"/api/boards/{p2}/move", json={"parent_id": project_id, "position": 0}, headers=admin)
+        assert r.status_code == 200, r.text
+        assert r.json()["parent_id"] == project_id
+        # move to top level
+        r = c.post(f"/api/boards/{p2}/move", json={"parent_id": None, "position": 0}, headers=admin)
+        assert r.status_code == 200 and r.json()["parent_id"] is None
+        # cycle guard: cannot move a parent under its own child
+        r = c.post(f"/api/boards/{company_id}/move", json={"parent_id": p3, "position": 0}, headers=admin)
+        assert r.status_code == 400, "cycle must be rejected"
+        # self-parent guard
+        r = c.post(f"/api/boards/{p3}/move", json={"parent_id": p3, "position": 0}, headers=admin)
+        assert r.status_code == 400
+        # permission: carol (view only) cannot move
+        assert c.post(f"/api/boards/{p3}/move", json={"parent_id": company_id, "position": 1}, headers=carol).status_code == 403
+
+        # ── Events carry user_name ─────────────────────────────────
+        evs = c.get("/api/events?limit=50", headers=admin).json()
+        assert any(e["action"] == "move" and e["user_name"] for e in evs), "move events must include user_name"
+        names = {e["user_name"] for e in evs if e["user_name"]}
+        assert "Admin" in names, f"expected admin name in events, got {names}"
+
         print("ALL API TESTS PASS")
         print(f"  users: admin + bob + carol; team: {team_id}")
         print(f"  boards: company + project; tasks: secret + 2 batch; custom status flow verified")

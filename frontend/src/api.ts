@@ -73,6 +73,7 @@ export type Event = {
   entity_type: string;
   entity_id: string;
   user_id: string | null;
+  user_name: string | null;
   action: string;
   field: string | null;
   old_value: string | null;
@@ -145,6 +146,9 @@ export function createBoard(payload: { name: string; parent_id?: string | null; 
 }
 export function updateBoard(id: string, payload: Partial<{ name: string; parent_id: string | null; kind: string; color: string; sort_order: number }>) {
   return req<Board>(`/boards/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+export function moveBoard(id: string, payload: { parent_id: string | null; position: number | null }) {
+  return req<Board>(`/boards/${id}/move`, { method: "POST", body: JSON.stringify(payload) });
 }
 export function deleteBoard(id: string) {
   return req<void>(`/boards/${id}`, { method: "DELETE" });

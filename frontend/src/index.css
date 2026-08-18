@@ -81,3 +81,27 @@ textarea {
   outline: 1px solid #3b82f6;
   outline-offset: 1px;
 }
+
+/* ── Mobile / small screens ─────────────────────────────────────────── */
+@media (max-width: 720px) {
+  :root {
+    --font-size: 12px;
+    --row-h: 32px;
+  }
+  body {
+    -webkit-text-size-adjust: 100%;
+  }
+  /* native momentum scrolling for board columns + kanban */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* On small screens, dialogs must never overflow the viewport */
+@media (max-width: 560px) {
+  .modal-overlay > div {
+    width: calc(100vw - 20px) !important;
+    min-width: 0 !important;
+    max-width: calc(100vw - 20px) !important;
+  }
+}

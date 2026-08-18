@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { fetchBoardTree, fetchTasks, fetchStatuses, createTask, toggleComplete, updateTask, createBoard, updateBoard, deleteBoard, deleteTask, convertTaskToProject, Task, fetchBoards, BoardTreeNode } from "../api";
+import { fetchBoardTree, fetchTasks, fetchStatuses, createTask, toggleComplete, updateTask, createBoard, updateBoard, moveBoard, deleteBoard, deleteTask, convertTaskToProject, Task, fetchBoards, Board, BoardTreeNode } from "../api";
 import { useI18n } from "../i18n";
 import ShareDialog from "../components/ShareDialog";
 
@@ -153,7 +153,7 @@ function TaskRow({
           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
             <button onClick={onShare} style={{ ...btnStyle }}>{t("share")}</button>
             <button onClick={onConvert} style={{ ...btnStyle }}>{t("convertToProject")}</button>
-            <button onClick={onDelete} style={{ ...btnStyle, color: "#ef4444", borderColor: "#ef444455" }}>{t("delete")}</button>
+            <button onClick={() => { if (confirm(t("deleteTaskWarning"))) onDelete(); }} style={{ ...btnStyle, color: "#ef4444", borderColor: "#ef444455" }}>{t("delete")}</button>
             <button onClick={() => setOpen(false)} style={btnStyle}>{t("cancel")}</button>
             <button onClick={save} style={{ ...btnStyle, background: "#3b82f6", color: "#fff", borderColor: "#3b82f6" }}>{t("save")}</button>
           </div>
@@ -189,11 +189,27 @@ function Column({
   tasksAll,
   depth,
   onAddBoard,
+  allBoards,
+  draggedId,
+  dropTarget,
+  onDragStart,
+  onDragEnd,
+  onDragOverBoard,
+  onDropBoard,
+  onDropSection,
 }: {
   board: BoardTreeNode;
   tasksAll: Task[];
   depth: number;
   onAddBoard: (parentId: string) => void;
+  allBoards: Board[];
+  draggedId: string | null;
+  dropTarget: { boardId: string; before: boolean } | null;
+  onDragStart: (id: string) => void;
+  onDragEnd: () => void;
+  onDragOverBoard: (boardId: string, before: boolean) => void;
+  onDropBoard: (draggedId: string, targetId: string, before: boolean) => void;
+  onDropSection: (sectionId: string, before: boolean) => void;
 }) {
   const { t } = useI18n();
   const qc = useQueryClient();
@@ -204,6 +220,8 @@ function Column({
   const [taskShareId, setTaskShareId] = useState<string>("");
   const [editName, setEditName] = useState(board.name);
   const [editColor, setEditColor] = useState(board.color);
+  const [moveTarget, setMoveTarget] = useState("");
+  const [moveOpen, setMoveOpen] = useState(false);
 
   const active = tasksAll.filter((x) => x.board_id === board.id && x.status !== "done");
   const done = tasksAll.filter((x) => x.board_id === board.id && x.status === "done");
@@ -240,6 +258,10 @@ function Column({
     mutationFn: () => deleteBoard(board.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["boards"] }),
   });
+  const moveBoardMut = useMutation({
+    mutationFn: ({ parentId }: { parentId: string | null }) => moveBoard(board.id, { parent_id: parentId, position: null }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["boards"] }); setMoveOpen(false); },
+  });
 
   const parentRef = useRef<HTMLDivElement>(null);
   const rowVirtualizer = useVirtualizer({
@@ -257,9 +279,31 @@ function Column({
   };
 
   const isNestedParent = board.children.length > 0;
+  const isDragOver = dropTarget?.boardId === board.id;
+  const dropBefore = dropTarget?.before ?? false;
 
   return (
     <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", board.id);
+        e.dataTransfer.effectAllowed = "move";
+        onDragStart(board.id);
+      }}
+      onDragEnd={onDragEnd}
+      onDragOver={(e) => {
+        if (!draggedId || draggedId === board.id) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        const rect = e.currentTarget.getBoundingClientRect();
+        const before = e.clientX < rect.left + rect.width / 2;
+        onDragOverBoard(board.id, before);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        const id = draggedId || e.dataTransfer.getData("text/plain");
+        if (id && id !== board.id) onDropBoard(id, board.id, dropBefore);
+      }}
       style={{
         width: 240,
         minWidth: 240,
@@ -270,6 +314,9 @@ function Column({
         background: "var(--bg-surface)",
         overflow: "hidden",
         maxHeight: "calc(100vh - 84px)",
+        opacity: draggedId === board.id ? 0.4 : 1,
+        boxShadow: isDragOver ? `inset ${dropBefore ? "3px 0 0" : "0 3px 0 0"} #3b82f6` : undefined,
+        cursor: "grab",
       }}
     >
       <div
@@ -301,7 +348,8 @@ function Column({
             </div>
             <button onClick={() => onAddBoard(board.id)} style={{ ...btnStyle, textAlign: "left" }}>{t("addProject")}</button>
             <button onClick={() => { setMenuOpen(false); setShareOpen(true); }} style={{ ...btnStyle, textAlign: "left" }}>{t("share")}</button>
-            <button onClick={() => { if (confirm("Delete board and its tasks?")) deleteBoardMut.mutate(); }} style={{ ...btnStyle, color: "#ef4444", borderColor: "#ef444455" }}>{t("delete")}</button>
+            <button onClick={() => { setMenuOpen(false); setMoveOpen(true); }} style={{ ...btnStyle, textAlign: "left" }}>{t("move")}...</button>
+            <button onClick={() => { if (confirm(t("deleteBoardWarning"))) deleteBoardMut.mutate(); }} style={{ ...btnStyle, color: "#ef4444", borderColor: "#ef444455" }}>{t("delete")}</button>
           </div>
         )}
       </div>
@@ -314,7 +362,7 @@ function Column({
       {isNestedParent ? (
         <div style={{ flex: 1, overflow: "auto", padding: 6, display: "flex", flexDirection: "column", gap: 8 }}>
           {board.children.map((child) => (
-            <Column key={child.id} board={child} tasksAll={tasksAll} depth={depth + 1} onAddBoard={onAddBoard} />
+            <Column key={child.id} board={child} tasksAll={tasksAll} depth={depth + 1} onAddBoard={onAddBoard} allBoards={allBoards} draggedId={draggedId} dropTarget={dropTarget} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragOverBoard={onDragOverBoard} onDropBoard={onDropBoard} onDropSection={onDropSection} />
           ))}
           {board.children.length === 0 && <div style={{ fontSize: 11, color: "var(--text-faint)", textAlign: "center", padding: 8 }}>{t("noTasks")}</div>}
         </div>
@@ -353,14 +401,44 @@ function Column({
       )}
 
       {shareOpen && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setShareOpen(false)}>
+        <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setShareOpen(false)}>
           <ShareDialog scope={{ type: "board", boardId: board.id, boardName: board.name }} onClose={() => setShareOpen(false)} />
         </div>
       )}
 
       {taskShareId && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setTaskShareId("")}>
+        <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setTaskShareId("")}>
           <ShareDialog scope={{ type: "task", taskIds: [taskShareId], label: "" }} onClose={() => setTaskShareId("")} />
+        </div>
+      )}
+
+      {moveOpen && (
+        <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setMoveOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, padding: 16, minWidth: 300, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700 }}>{t("move")}: {board.name}</div>
+            <select value={moveTarget} onChange={(e) => setMoveTarget(e.target.value)} style={inputStyle}>
+              <option value="">{t("selectDestination")}</option>
+              <option value="__top__">{t("topLevel")}</option>
+              {allBoards
+                .filter((b) => b.id !== board.id && b.kind !== "project")
+                .map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+            </select>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button onClick={() => setMoveOpen(false)} style={btnStyle}>{t("cancel")}</button>
+              <button
+                onClick={() => {
+                  if (!moveTarget) return;
+                  if (confirm(t("moveWarning"))) moveBoardMut.mutate({ parentId: moveTarget === "__top__" ? null : moveTarget });
+                }}
+                disabled={!moveTarget}
+                style={{ ...btnStyle, background: "#3b82f6", color: "#fff", borderColor: "#3b82f6", opacity: moveTarget ? 1 : 0.5 }}
+              >
+                {t("move")}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -376,11 +454,52 @@ export default function BoardView({ search }: { search: string }) {
 
   const [addParent, setAddParent] = useState<string | null>(null);
   const [newBoardName, setNewBoardName] = useState("");
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ boardId: string; before: boolean } | null>(null);
+  const [sectionDrop, setSectionDrop] = useState<{ sectionId: string; before: boolean } | null>(null);
 
   const createBoardMut = useMutation({
     mutationFn: () => createBoard({ name: newBoardName, parent_id: addParent, kind: addParent ? "project" : "section", sort_order: 0 }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["boards"] }); setAddParent(null); setNewBoardName(""); },
   });
+
+  const moveBoardMut = useMutation({
+    mutationFn: ({ id, parentId, position }: { id: string; parentId: string | null; position: number | null }) =>
+      moveBoard(id, { parent_id: parentId, position }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["boards"] }),
+  });
+
+  const boardById = new Map((flatBoards || []).map((b) => [b.id, b]));
+
+  const handleDropBoard = (dragged: string, targetId: string, before: boolean) => {
+    const draggedBoard = boardById.get(dragged);
+    const targetBoard = boardById.get(targetId);
+    if (!draggedBoard || !targetBoard) return;
+    const siblings = (flatBoards || []).filter((b) => b.parent_id === targetBoard.parent_id);
+    const targetIndex = siblings.findIndex((b) => b.id === targetId);
+    let position = targetIndex + (before ? 0 : 1);
+    if (draggedBoard.parent_id === targetBoard.parent_id && targetIndex > -1) {
+      // same parent: position relative to list without dragged
+      const withoutDragged = siblings.filter((b) => b.id !== dragged);
+      position = Math.max(0, before ? withoutDragged.findIndex((b) => b.id === targetId) : withoutDragged.findIndex((b) => b.id === targetId) + 1);
+    }
+    if (draggedBoard.parent_id !== targetBoard.parent_id) {
+      const ok = confirm(`${t("moveWarning")}\n\n${t("move")} "${draggedBoard.name}" ${t("moveTo")} "${targetBoard.parent_id === null ? targetBoard.name : (boardById.get(targetBoard.parent_id || "")?.name || "?")}"?`);
+      if (!ok) return;
+    }
+    moveBoardMut.mutate({ id: dragged, parentId: targetBoard.parent_id, position });
+  };
+
+  const handleDropSection = (sectionId: string, before: boolean) => {
+    const draggedBoard = boardById.get(draggedId || "");
+    if (!draggedBoard) return;
+    if (draggedBoard.parent_id !== sectionId) {
+      const ok = confirm(`${t("moveWarning")}\n\n${t("move")} "${draggedBoard.name}" ${t("moveTo")} "${boardById.get(sectionId)?.name}"?`);
+      if (!ok) return;
+    }
+    const siblings = (flatBoards || []).filter((b) => b.parent_id === sectionId);
+    moveBoardMut.mutate({ id: draggedId as string, parentId: sectionId, position: siblings.length });
+  };
 
   const addTopSection = () => {
     const name = prompt(t("addSection"));
@@ -404,25 +523,55 @@ export default function BoardView({ search }: { search: string }) {
             </button>
           </div>
 
-          <div style={{ display: "flex", gap: 6, padding: 6, overflowX: "auto", alignItems: "flex-start", minHeight: 120 }}>
+          <div
+            style={{ display: "flex", gap: 6, padding: 6, overflowX: "auto", alignItems: "flex-start", minHeight: 120 }}
+            onDragOver={(e) => {
+              if (!draggedId) return;
+              e.preventDefault();
+              setSectionDrop({ sectionId: section.id, before: false });
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              handleDropSection(section.id, false);
+              setSectionDrop(null);
+            }}
+            onDragLeave={() => setSectionDrop(null)}
+          >
             {section.children.length === 0 ? (
               <div style={{ fontSize: 11, color: "var(--text-faint)", padding: 12 }}>{t("noTasks")} — {t("addColumn")}</div>
             ) : (
-              section.children.map((col) => <Column key={col.id} board={col} tasksAll={tasks as Task[]} depth={0} onAddBoard={setAddParent} />)
+              section.children.map((col) => (
+                <Column
+                  key={col.id}
+                  board={col}
+                  tasksAll={tasks as Task[]}
+                  depth={0}
+                  onAddBoard={setAddParent}
+                  allBoards={(flatBoards || []) as Board[]}
+                  draggedId={draggedId}
+                  dropTarget={dropTarget}
+                  onDragStart={setDraggedId}
+                  onDragEnd={() => { setDraggedId(null); setDropTarget(null); setSectionDrop(null); }}
+                  onDragOverBoard={(boardId, before) => setDropTarget({ boardId, before })}
+                  onDropBoard={handleDropBoard}
+                  onDropSection={handleDropSection}
+                />
+              ))
             )}
           </div>
         </div>
       ))}
 
-      <div style={{ display: "flex", gap: 8, padding: "4px 2px" }}>
+      <div style={{ display: "flex", gap: 8, padding: "4px 2px", flexWrap: "wrap" }}>
         <button onClick={addTopSection} style={{ fontSize: 11, padding: "4px 10px", border: "1px dashed var(--border-strong)", borderRadius: 6, background: "transparent", color: "var(--text-muted)", cursor: "pointer" }}>
           + {t("addSection")}
         </button>
         <span style={{ fontSize: 10, color: "var(--text-faint)", alignSelf: "center" }}>{(flatBoards || []).length} boards · {(tasks as Task[]).length} tasks</span>
+        <span style={{ fontSize: 10, color: "var(--text-faint)", alignSelf: "center" }}>{t("dragHint")}</span>
       </div>
 
       {addParent !== null && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setAddParent(null)}>
+        <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setAddParent(null)}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, padding: 16, minWidth: 320, display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ fontSize: 12, fontWeight: 700 }}>
               {addParent ? `${t("addProject")} — ${boardMap.get(addParent)?.name || ""}` : t("addSection")}

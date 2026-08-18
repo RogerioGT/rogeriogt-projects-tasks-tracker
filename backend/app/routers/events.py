@@ -41,4 +41,15 @@ def list_events(
     if action:
         q = q.where(Event.action == action)
     q = q.order_by(Event.created_at.desc()).limit(limit)
-    return db.scalars(q).all()
+    events = db.scalars(q).all()
+    # resolve user names in one query
+    user_ids = {e.user_id for e in events if e.user_id}
+    names: dict[str, str] = {}
+    if user_ids:
+        for u in db.scalars(select(User).where(User.id.in_(user_ids))).all():
+            names[u.id] = u.name or u.email
+    out = [EventOut.model_validate(e) for e in events]
+    for o in out:
+        if o.user_id:
+            o.user_name = names.get(o.user_id)
+    return out

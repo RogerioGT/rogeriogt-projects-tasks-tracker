@@ -107,7 +107,7 @@ export default function KanbanView({ search }: { search: string }) {
       <div style={{ fontSize: 10, color: "var(--text-faint)" }}>Drag cards between columns to change status. Click a card to edit.</div>
 
       {editingTask && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }} onClick={() => setEditingTask(null)}>
+        <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }} onClick={() => setEditingTask(null)}>
           <TaskEditDialog task={editingTask} onClose={() => setEditingTask(null)} />
         </div>
       )}

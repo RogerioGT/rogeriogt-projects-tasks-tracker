@@ -194,7 +194,7 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, flex: 1 }}>{team.name}</span>
                     <span style={{ fontSize: 10, color: "var(--text-faint)" }}>{team.members.length} {t("members")}</span>
-                    <button onClick={() => deleteTeamMut.mutate(team.id)} style={{ ...btnStyle, color: "#ef4444", borderColor: "#ef444455", fontSize: 10, padding: "2px 6px" }}>x</button>
+                    <button onClick={() => { if (confirm(t("deleteTeamWarning"))) deleteTeamMut.mutate(team.id); }} style={{ ...btnStyle, color: "#ef4444", borderColor: "#ef444455", fontSize: 10, padding: "2px 6px" }}>x</button>
                   </div>
                   {candidates.length > 0 ? (
                     <MemberSelect teamId={team.id} candidates={candidates} onAdd={(userId) => addMemberMut.mutate({ teamId: team.id, userId })} label={t("addUser")} />
@@ -205,7 +205,7 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
                     {team.members.map((m) => (
                       <span key={m.id} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 99, background: "var(--bg)", border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 5 }}>
                         {userName(m.user_id)}
-                        <button onClick={() => removeMemberMut.mutate({ teamId: team.id, userId: m.user_id })} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0, fontSize: 10 }}>x</button>
+                        <button onClick={() => { if (confirm(t("removeMemberWarning"))) removeMemberMut.mutate({ teamId: team.id, userId: m.user_id }); }} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0, fontSize: 10 }}>x</button>
                       </span>
                     ))}
                     {team.members.length === 0 && <span style={{ fontSize: 10, color: "var(--text-faint)" }}>{t("noMembers")}</span>}
@@ -231,7 +231,7 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
               <span key={s.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, padding: "4px 10px", borderRadius: 99, border: `1px solid ${s.color}55`, background: `${s.color}14` }}>
                 <span style={{ width: 8, height: 8, borderRadius: 99, background: s.color }} />
                 {t(s.name)}
-                <button onClick={() => deleteStatusMut.mutate(s.id)} title={t("remove")} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0, fontSize: 11 }}>x</button>
+                <button onClick={() => { if (confirm(t("deleteStatusWarning"))) deleteStatusMut.mutate(s.id); }} title={t("remove")} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0, fontSize: 11 }}>x</button>
               </span>
             ))}
           </div>

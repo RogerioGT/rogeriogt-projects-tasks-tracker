@@ -61,12 +61,12 @@ function TopBar({
   return (
     <header
       style={{
-        height: 36,
         minHeight: 36,
         display: "flex",
         alignItems: "center",
-        gap: 8,
-        padding: "0 10px",
+        flexWrap: "wrap",
+        gap: 4,
+        padding: "4px 10px",
         borderBottom: "1px solid var(--border)",
         background: "var(--bg-surface)",
         position: "sticky",
@@ -76,7 +76,7 @@ function TopBar({
     >
       <div style={{ fontWeight: 700, fontSize: 11, letterSpacing: 0.3, whiteSpace: "nowrap" }}>{t("appTitle")}</div>
 
-      <div style={{ display: "flex", gap: 2, marginLeft: 12 }}>
+      <div style={{ display: "flex", gap: 2, marginLeft: 12, overflowX: "auto", maxWidth: "100%", flexShrink: 1 }}>
         {views.map((v) => (
           <button
             key={v.key}
@@ -112,6 +112,9 @@ function TopBar({
           background: "var(--bg)",
           color: "var(--text)",
           width: 180,
+          maxWidth: "40vw",
+          minWidth: 80,
+          flexShrink: 1,
           outline: "none",
         }}
       />
@@ -206,7 +209,7 @@ function TopBar({
           </div>
         )}
         {adminOpen && (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }} onClick={() => setAdminOpen(false)}>
+          <div className="modal-overlay" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }} onClick={() => setAdminOpen(false)}>
             <AdminPanel onClose={() => setAdminOpen(false)} />
           </div>
         )}

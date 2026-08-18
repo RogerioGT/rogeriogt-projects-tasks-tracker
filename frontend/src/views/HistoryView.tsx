@@ -105,6 +105,11 @@ export default function HistoryView() {
                 <span style={{ color: "var(--text)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {e.new_value || e.old_value || (boardLabel ? boardLabel : e.entity_id.slice(0, 8))}
                 </span>
+                {e.user_name && (
+                  <span style={{ color: "var(--text-muted)", fontSize: 10, flexShrink: 0, background: "var(--bg)", padding: "1px 6px", borderRadius: 99, border: "1px solid var(--border)" }}>
+                    by {e.user_name}
+                  </span>
+                )}
                 <span style={{ color: "var(--text-faint)", fontSize: 10, flexShrink: 0 }}>{timeAgo(e.created_at)}</span>
               </div>
             );

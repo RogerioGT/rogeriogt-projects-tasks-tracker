@@ -243,6 +243,35 @@ def main():
         names = {e["user_name"] for e in evs if e["user_name"]}
         assert "Admin" in names, f"expected admin name in events, got {names}"
 
+        # ── Task share exposes the board chain (not siblings) ──────
+        # dave gets ONLY a task share (no board share) on the project
+        r = c.post("/api/auth/users", json={"email": "dave@x.com", "name": "Dave", "password": "davepass123"}, headers=admin)
+        dave_id = r.json()["id"]
+        dave = {"Authorization": f"Bearer {c.post('/api/auth/login', json={'email': 'dave@x.com', 'password': 'davepass123'}).json()['token']}"}
+        c.post(f"/api/tasks/{t2}/acl", json={"user_id": dave_id, "permission": "view"}, headers=admin)
+        dave_boards = c.get("/api/boards", headers=dave).json()
+        dave_ids = {b["id"] for b in dave_boards}
+        # chain: section -> company -> project must be visible
+        assert company_id in dave_ids, "task share must reveal the company (ancestor)"
+        assert project_id in dave_ids, "task share must reveal the project (task's board)"
+        # sibling projects must NOT leak
+        assert p2 not in dave_ids and p3 not in dave_ids, "siblings must stay hidden"
+        # dave sees only the shared task inside that board
+        dave_tasks = c.get("/api/tasks", headers=dave).json()
+        assert [t["id"] for t in dave_tasks] == [t2], "only the shared task should be visible"
+        # tree carries permission for dave: view on the chain, no edit
+        tree = c.get("/api/boards/tree", headers=dave).json()
+        flat = []
+        def walk(nodes):
+            for n in nodes:
+                flat.append(n)
+                walk(n["children"])
+        walk(tree)
+        perms = {n["id"]: n.get("permission") for n in flat}
+        assert perms.get(project_id) in (None, "view"), "no edit permission from a task share"
+        # board delete with task shares must succeed (FK cleanup)
+        assert c.delete(f"/api/boards/{new_board_id}", headers=admin).status_code == 204
+
         print("ALL API TESTS PASS")
         print(f"  users: admin + bob + carol; team: {team_id}")
         print(f"  boards: company + project; tasks: secret + 2 batch; custom status flow verified")

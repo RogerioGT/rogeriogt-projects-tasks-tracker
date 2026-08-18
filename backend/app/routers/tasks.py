@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..access import board_permission, task_permission, visible_task_ids
 from ..db import get_db
 from ..deps import get_current_user
-from ..models import Board, Event, Task, User
+from ..models import Board, Event, Task, TaskAcl, User
 from ..schemas import BoardOut, TaskCreate, TaskConvertOut, TaskMove, TaskOut, TaskUpdate
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -238,6 +238,9 @@ def delete_task(task_id: str, db: Session = Depends(get_db), user: User = Depend
     if task_permission(db, user, task_id) != "edit":
         raise HTTPException(403, "no edit permission on this task")
     _log(db, "task", task_id, "delete", user_id=user.id)
+    for acl in db.scalars(select(TaskAcl).where(TaskAcl.task_id == task_id)).all():
+        db.delete(acl)
+    db.flush()
     db.delete(task)
     db.commit()
 

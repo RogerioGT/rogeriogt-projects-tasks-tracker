@@ -10,10 +10,23 @@ from sqlalchemy.orm import Session
 from ..access import board_permission, visible_board_ids
 from ..db import get_db
 from ..deps import get_current_user
-from ..models import Board, Event, User
+from ..models import Board, BoardAcl, Event, Task, TaskAcl, User
 from ..schemas import BoardCreate, BoardMove, BoardOut, BoardUpdate
 
 router = APIRouter(prefix="/api/boards", tags=["boards"])
+
+
+def _board_ids_under(db: Session, board_id: str) -> list[str]:
+    """board_id plus all descendant ids."""
+    ids = [board_id]
+    frontier = [board_id]
+    while frontier:
+        children = db.scalars(select(Board.id).where(Board.parent_id.in_(frontier))).all()
+        if not children:
+            break
+        ids.extend(children)
+        frontier = list(children)
+    return ids
 
 
 def _log(db: Session, entity: str, eid: str, action: str, user_id=None, field=None, old=None, new=None):
@@ -38,6 +51,7 @@ def board_tree(db: Session = Depends(get_db), user: User = Depends(get_current_u
         boards = [b for b in boards if b.id in visible]
     by_parent: dict[str | None, list[dict]] = {}
     for b in boards:
+        perm = board_permission(db, user, b.id)
         by_parent.setdefault(b.parent_id, []).append(
             {
                 "id": b.id,
@@ -46,6 +60,7 @@ def board_tree(db: Session = Depends(get_db), user: User = Depends(get_current_u
                 "color": b.color,
                 "sort_order": b.sort_order,
                 "parent_id": b.parent_id,
+                "permission": perm,  # "edit" | "view" | None
                 "children": [],
             }
         )
@@ -76,6 +91,7 @@ def board_tree(db: Session = Depends(get_db), user: User = Depends(get_current_u
                 "color": b.color,
                 "sort_order": b.sort_order,
                 "parent_id": b.parent_id,
+                "permission": board_permission(db, user, b.id),
                 "children": [],
             }
         )
@@ -196,6 +212,15 @@ def delete_board(board_id: str, db: Session = Depends(get_db), user: User = Depe
     if board_permission(db, user, board_id) != "edit":
         raise HTTPException(403, "no edit permission on this board")
     _log(db, "board", board_id, "delete", user_id=user.id)
+    # FK cleanup: task-level shares + board shares for the whole subtree
+    subtree_ids = _board_ids_under(db, board_id)
+    for acl in db.scalars(select(TaskAcl).where(TaskAcl.task_id.in_(
+        select(Task.id).where(Task.board_id.in_(subtree_ids))
+    ))).all():
+        db.delete(acl)
+    for acl in db.scalars(select(BoardAcl).where(BoardAcl.board_id.in_(subtree_ids))).all():
+        db.delete(acl)
+    db.flush()
     db.delete(board)  # cascade deletes children + tasks
     db.commit()
 

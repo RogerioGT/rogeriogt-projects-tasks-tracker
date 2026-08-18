@@ -1,15 +1,14 @@
 """Access control: visibility scopes and permission checks for boards/tasks.
 
-Rules (prod mode, REQUIRE_AUTH=true):
+Visibility model (prod mode, REQUIRE_AUTH=true):
 - Admin: sees and edits everything.
-- Regular user sees:
-  - boards they created (created_by == user.id)
-  - boards shared with them directly (board_acl.user_id)
-  - boards shared with their teams (board_acl.team_id)
-  - descendants of any visible board (inheritance down the tree)
-- Tasks are visible when their board is visible OR a task_acl row grants access.
-- Edit permission: admin, creator, or an explicit "edit" ACL (board ACL inherited
-  down the tree; task ACL for that task).
+- FULL access boards: created by the user, or shared via board_acl (user or
+  team), plus their descendants. The user sees ALL tasks inside these boards.
+- CHAIN-ONLY boards: ancestors of a board containing a task shared with the
+  user via task_acl. The user sees the hierarchy (so the board renders) but
+  ONLY the shared task(s) inside it, never siblings or nested sub-projects.
+- Edit permission: admin, creator, or an explicit "edit" ACL (board ACL
+  inherited down the tree; task ACL for that task).
 
 Local mode (REQUIRE_AUTH=false): everything is allowed (single user, frictionless).
 """
@@ -28,25 +27,27 @@ def _team_ids(db: Session, user_id: str) -> list[str]:
     )
 
 
-def visible_board_ids(db: Session, user: User) -> set[str] | None:
-    """Board ids the user can see. None = unrestricted (admin / local mode)."""
+def _task_acl_cond(user: User, teams: list[str]):
+    cond = TaskAcl.user_id == user.id
+    if teams:
+        cond = cond | TaskAcl.team_id.in_(teams)
+    return cond
+
+
+def full_access_board_ids(db: Session, user: User) -> set[str] | None:
+    """Boards where the user sees ALL tasks (created + board shares + descendants).
+
+    None = unrestricted (admin / local mode).
+    """
     if not REQUIRE_AUTH or user.is_admin or user.email == "local@rogeriogt":
         return None
 
     ids: set[str] = set()
-    # created by user
     ids.update(db.scalars(select(Board.id).where(Board.created_by == user.id)).all())
-    # shared directly
-    ids.update(
-        db.scalars(select(BoardAcl.board_id).where(BoardAcl.user_id == user.id)).all()
-    )
-    # shared with user's teams
+    ids.update(db.scalars(select(BoardAcl.board_id).where(BoardAcl.user_id == user.id)).all())
     teams = _team_ids(db, user.id)
     if teams:
-        ids.update(
-            db.scalars(select(BoardAcl.board_id).where(BoardAcl.team_id.in_(teams))).all()
-        )
-    # descendants of every visible board (inheritance down the tree)
+        ids.update(db.scalars(select(BoardAcl.board_id).where(BoardAcl.team_id.in_(teams))).all())
     frontier = list(ids)
     while frontier:
         children = db.scalars(select(Board.id).where(Board.parent_id.in_(frontier))).all()
@@ -58,21 +59,53 @@ def visible_board_ids(db: Session, user: User) -> set[str] | None:
     return ids
 
 
+def chain_board_ids(db: Session, user: User) -> set[str]:
+    """Ancestor chains of boards containing tasks shared with the user.
+
+    These boards render in the hierarchy but reveal no tasks by themselves.
+    """
+    teams = _team_ids(db, user.id)
+    shared_task_board_ids = db.scalars(
+        select(Task.board_id)
+        .join(TaskAcl, TaskAcl.task_id == Task.id)
+        .where(_task_acl_cond(user, teams))
+    ).all()
+    chain: set[str] = set()
+    for board_id in set(shared_task_board_ids):
+        node = db.get(Board, board_id)
+        while node is not None:
+            chain.add(node.id)
+            node = node.parent
+    return chain
+
+
+def visible_board_ids(db: Session, user: User) -> set[str] | None:
+    """Board ids the user can see. None = unrestricted (admin / local mode)."""
+    if not REQUIRE_AUTH or user.is_admin or user.email == "local@rogeriogt":
+        return None
+    ids = full_access_board_ids(db, user) or set()
+    ids |= chain_board_ids(db, user)
+    return ids
+
+
 def visible_task_ids(db: Session, user: User) -> set[str] | None:
-    """Task ids the user can see. None = unrestricted."""
+    """Task ids the user can see. None = unrestricted.
+
+    Rules:
+    - all tasks inside FULL access boards
+    - tasks shared directly via task_acl (user or team)
+    """
     if not REQUIRE_AUTH or user.is_admin or user.email == "local@rogeriogt":
         return None
 
     ids: set[str] = set()
-    boards = visible_board_ids(db, user)
+    boards = full_access_board_ids(db, user)
     if boards:
         ids.update(db.scalars(select(Task.id).where(Task.board_id.in_(boards))).all())
-    ids.update(db.scalars(select(TaskAcl.task_id).where(TaskAcl.user_id == user.id)).all())
     teams = _team_ids(db, user.id)
-    if teams:
-        ids.update(
-            db.scalars(select(TaskAcl.task_id).where(TaskAcl.team_id.in_(teams))).all()
-        )
+    ids.update(
+        db.scalars(select(TaskAcl.task_id).where(_task_acl_cond(user, teams))).all()
+    )
     return ids
 
 

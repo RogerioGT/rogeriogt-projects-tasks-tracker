@@ -40,6 +40,7 @@ export type BoardTreeNode = {
   color: string;
   sort_order: number;
   parent_id: string | null;
+  permission: "edit" | "view" | null;
   children: BoardTreeNode[];
 };
 

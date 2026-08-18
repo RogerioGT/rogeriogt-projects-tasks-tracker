@@ -26,6 +26,7 @@ function TaskRow({
   onDelete,
   onShare,
   onConvert,
+  canEdit,
 }: {
   task: Task;
   onToggle: () => void;
@@ -33,6 +34,7 @@ function TaskRow({
   onDelete: () => void;
   onShare: () => void;
   onConvert: () => void;
+  canEdit: boolean;
 }) {
   const { t } = useI18n();
   const { data: statuses } = useQuery({ queryKey: ["statuses"], queryFn: fetchStatuses });
@@ -75,9 +77,10 @@ function TaskRow({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 6, minHeight: "var(--row-h)" }}>
-        <input type="checkbox" checked={task.status === "done"} onChange={onToggle} style={{ accentColor: "#22c55e", width: 12, height: 12 }} />
+        <input type="checkbox" checked={task.status === "done"} onChange={onToggle} disabled={!canEdit} style={{ accentColor: "#22c55e", width: 12, height: 12, opacity: canEdit ? 1 : 0.4, cursor: canEdit ? "pointer" : "not-allowed" }} />
         <button
           onClick={() => setOpen(!open)}
+          disabled={!canEdit}
           style={{
             flex: 1,
             textAlign: "left",
@@ -222,6 +225,9 @@ function Column({
   const [editColor, setEditColor] = useState(board.color);
   const [moveTarget, setMoveTarget] = useState("");
   const [moveOpen, setMoveOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
+
+  const canEdit = board.permission === "edit";
 
   const active = tasksAll.filter((x) => x.board_id === board.id && x.status !== "done");
   const done = tasksAll.filter((x) => x.board_id === board.id && x.status === "done");
@@ -281,26 +287,31 @@ function Column({
   const isNestedParent = board.children.length > 0;
   const isDragOver = dropTarget?.boardId === board.id;
   const dropBefore = dropTarget?.before ?? false;
+  const draggedIsSection = draggedId ? (allBoards.find((b) => b.id === draggedId)?.parent_id ?? null) === null : false;
 
   return (
     <div
-      draggable
+      draggable={canEdit}
       onDragStart={(e) => {
+        if (!canEdit) return;
         e.dataTransfer.setData("text/plain", board.id);
         e.dataTransfer.effectAllowed = "move";
         onDragStart(board.id);
       }}
       onDragEnd={onDragEnd}
       onDragOver={(e) => {
-        if (!draggedId || draggedId === board.id) return;
+        if (!draggedId || draggedId === board.id || draggedIsSection) return;
         e.preventDefault();
+        e.stopPropagation();  // don't let the section container override with 'append to end'
         e.dataTransfer.dropEffect = "move";
         const rect = e.currentTarget.getBoundingClientRect();
         const before = e.clientX < rect.left + rect.width / 2;
         onDragOverBoard(board.id, before);
       }}
       onDrop={(e) => {
+        if (draggedIsSection) return;
         e.preventDefault();
+        e.stopPropagation();  // column drop wins over section append
         const id = draggedId || e.dataTransfer.getData("text/plain");
         if (id && id !== board.id) onDropBoard(id, board.id, dropBefore);
       }}
@@ -335,11 +346,39 @@ function Column({
         <span style={{ fontSize: 10, color: "var(--text-faint)", background: "var(--bg)", padding: "1px 5px", borderRadius: 99, border: "1px solid var(--border)" }}>
           {active.length + done.length}
         </span>
-        <button onClick={() => setMenuOpen(!menuOpen)} style={{ fontSize: 12, padding: "2px 6px", border: "1px solid var(--border)", borderRadius: 4, background: "var(--bg)", color: "var(--text-muted)", cursor: "pointer" }}>
-          ...
-        </button>
-        {menuOpen && (
-          <div style={{ position: "absolute", top: "100%", right: 4, marginTop: 4, background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 6, padding: 8, minWidth: 180, zIndex: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        {canEdit && (
+          <button
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              if (menuOpen) setMenuOpen(false);
+              else {
+                setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+                setMenuOpen(true);
+              }
+            }}
+            style={{ fontSize: 12, padding: "2px 6px", border: "1px solid var(--border)", borderRadius: 4, background: "var(--bg)", color: "var(--text-muted)", cursor: "pointer" }}
+          >
+            ...
+          </button>
+        )}
+        {menuOpen && menuPos && (
+          <div
+            style={{
+              position: "fixed",
+              top: Math.min(menuPos.top, window.innerHeight - 260),
+              right: menuPos.right,
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border)",
+              borderRadius: 6,
+              padding: 8,
+              minWidth: 180,
+              zIndex: 90,
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+            }}
+          >
             <input value={editName} onChange={(e) => setEditName(e.target.value)} style={inputStyle} placeholder={t("title")} />
             <input type="color" value={editColor} onChange={(e) => setEditColor(e.target.value)} style={{ width: "100%", height: 28, border: "1px solid var(--border)", borderRadius: 4, background: "var(--bg)" }} />
             <div style={{ display: "flex", gap: 6 }}>
@@ -354,10 +393,12 @@ function Column({
         )}
       </div>
 
-      <form onSubmit={handleAdd} style={{ padding: "6px 6px 4px", borderBottom: "1px solid var(--border)", display: "flex", gap: 4, background: "var(--bg-surface)", position: "sticky", top: 0 }}>
-        <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder={t("newTaskPlaceholder")} style={{ ...inputStyle, flex: 1 }} />
-        <button type="submit" style={{ ...btnStyle, background: board.color, color: "#fff", borderColor: board.color, whiteSpace: "nowrap" }}>{t("addTask")}</button>
-      </form>
+      {canEdit && (
+        <form onSubmit={handleAdd} style={{ padding: "6px 6px 4px", borderBottom: "1px solid var(--border)", display: "flex", gap: 4, background: "var(--bg-surface)", position: "sticky", top: 0 }}>
+          <input value={newTitle} onChange={(e) => setNewTitle(e.target.value)} placeholder={t("newTaskPlaceholder")} style={{ ...inputStyle, flex: 1 }} />
+          <button type="submit" style={{ ...btnStyle, background: board.color, color: "#fff", borderColor: board.color, whiteSpace: "nowrap" }}>{t("addTask")}</button>
+        </form>
+      )}
 
       {isNestedParent ? (
         <div style={{ flex: 1, overflow: "auto", padding: 6, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -377,14 +418,14 @@ function Column({
                   const task = active[vi.index];
                   return (
                     <div key={task.id} style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vi.start}px)`, paddingBottom: 4 }}>
-                      <TaskRow task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} />
+                      <TaskRow task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} canEdit={canEdit} />
                     </div>
                   );
                 })}
               </div>
             ) : (
               active.map((task) => (
-                <TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} />
+                <TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} canEdit={canEdit} />
               ))
             )}
           </div>
@@ -394,7 +435,7 @@ function Column({
               <button onClick={() => setShowCompleted(!showCompleted)} style={{ fontSize: 10, color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer", width: "100%", textAlign: "left", padding: "2px 0" }}>
                 {showCompleted ? "▾" : "▸"} {t("completed")} ({done.length})
               </button>
-              {showCompleted && <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4, opacity: 0.75 }}>{done.map((task) => (<TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} />))}</div>}
+              {showCompleted && <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4, opacity: 0.75 }}>{done.map((task) => (<TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} canEdit={canEdit} />))}</div>}
             </div>
           )}
         </>
@@ -457,6 +498,7 @@ export default function BoardView({ search }: { search: string }) {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ boardId: string; before: boolean } | null>(null);
   const [sectionDrop, setSectionDrop] = useState<{ sectionId: string; before: boolean } | null>(null);
+  const [sectionDropTarget, setSectionDropTarget] = useState<{ sectionId: string; before: boolean } | null>(null);
 
   const createBoardMut = useMutation({
     mutationFn: () => createBoard({ name: newBoardName, parent_id: addParent, kind: addParent ? "project" : "section", sort_order: 0 }),
@@ -493,12 +535,23 @@ export default function BoardView({ search }: { search: string }) {
   const handleDropSection = (sectionId: string, before: boolean) => {
     const draggedBoard = boardById.get(draggedId || "");
     if (!draggedBoard) return;
+    if (draggedBoard.parent_id === null) return;  // sections reorder via the section band, not here
     if (draggedBoard.parent_id !== sectionId) {
       const ok = confirm(`${t("moveWarning")}\n\n${t("move")} "${draggedBoard.name}" ${t("moveTo")} "${boardById.get(sectionId)?.name}"?`);
       if (!ok) return;
     }
     const siblings = (flatBoards || []).filter((b) => b.parent_id === sectionId);
     moveBoardMut.mutate({ id: draggedId as string, parentId: sectionId, position: siblings.length });
+  };
+
+  const handleDropSectionReorder = (dragged: string, targetSectionId: string, before: boolean) => {
+    const draggedBoard = boardById.get(dragged);
+    if (!draggedBoard || dragged === targetSectionId) return;
+    const roots = (flatBoards || []).filter((b) => b.parent_id === null);
+    const withoutDragged = roots.filter((b) => b.id !== dragged);
+    const targetIndex = withoutDragged.findIndex((b) => b.id === targetSectionId);
+    const position = before ? targetIndex : targetIndex + 1;
+    moveBoardMut.mutate({ id: dragged, parentId: null, position: Math.max(0, position) });
   };
 
   const addTopSection = () => {
@@ -513,12 +566,53 @@ export default function BoardView({ search }: { search: string }) {
   return (
     <div style={{ padding: 8, display: "flex", flexDirection: "column", gap: 10 }}>
       {(tree as BoardTreeNode[]).map((section) => (
-        <div key={section.id} style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden", background: "var(--bg-surface)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: section.color, color: "#fff" }}>
+        <div
+          key={section.id}
+          style={{
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            overflow: "hidden",
+            background: "var(--bg-surface)",
+            opacity: draggedId === section.id ? 0.4 : 1,
+            boxShadow: sectionDropTarget?.sectionId === section.id
+              ? `inset 0 ${sectionDropTarget.before ? "3px" : "-3px"} 0 #3b82f6`
+              : undefined,
+          }}
+        >
+          <div
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData("text/plain", section.id);
+              e.dataTransfer.effectAllowed = "move";
+              setDraggedId(section.id);
+            }}
+            onDragEnd={() => { setDraggedId(null); setSectionDropTarget(null); setDropTarget(null); setSectionDrop(null); }}
+            onDragOver={(e) => {
+              if (!draggedId || draggedId === section.id) return;
+              const draggedBoard = boardById.get(draggedId);
+              const isSectionDrag = draggedBoard?.parent_id === null;
+              if (!isSectionDrag) return;  // column drags: let the columns area handle it
+              e.preventDefault();
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              const before = e.clientY < rect.top + rect.height / 2;
+              setSectionDropTarget({ sectionId: section.id, before });
+            }}
+            onDrop={(e) => {
+              const draggedBoard = boardById.get(draggedId || "");
+              if (!draggedBoard || draggedBoard.parent_id !== null) return;  // only section reorder here
+              e.preventDefault();
+              e.stopPropagation();
+              const id = draggedId || e.dataTransfer.getData("text/plain");
+              if (id && id !== section.id) handleDropSectionReorder(id, section.id, sectionDropTarget?.before ?? false);
+              setSectionDropTarget(null);
+            }}
+            style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: section.color, color: "#fff", cursor: "grab" }}
+          >
             <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.2 }}>{section.name}</span>
             <span style={{ fontSize: 10, background: "rgba(255,255,255,0.2)", padding: "1px 6px", borderRadius: 99 }}>{section.children.length} columns</span>
             <div style={{ flex: 1 }} />
-            <button onClick={() => setAddParent(section.id)} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer" }}>
+            <button onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); setAddParent(section.id); }} style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.5)", background: "rgba(255,255,255,0.15)", color: "#fff", cursor: "pointer" }}>
               + {t("addColumn")}
             </button>
           </div>
@@ -527,6 +621,8 @@ export default function BoardView({ search }: { search: string }) {
             style={{ display: "flex", gap: 6, padding: 6, overflowX: "auto", alignItems: "flex-start", minHeight: 120 }}
             onDragOver={(e) => {
               if (!draggedId) return;
+              const draggedBoard = boardById.get(draggedId);
+              if (draggedBoard?.parent_id === null) return;  // section drags use the band
               e.preventDefault();
               setSectionDrop({ sectionId: section.id, before: false });
             }}

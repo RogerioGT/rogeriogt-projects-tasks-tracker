@@ -291,6 +291,9 @@ def main():
         trash_names = [b["name"] for b in trash_list["boards"]]
         assert "To Trash" in trash_names, trash_names
         assert "Sub of trash" not in trash_names, "children should not be listed separately"
+        # fresh deletes show ~30 days remaining
+        trashed_board = next(b for b in trash_list["boards"] if b["name"] == "To Trash")
+        assert 29 <= trashed_board["expires_in_days"] <= 30, trashed_board["expires_in_days"]
         # non-admin cannot see trash
         assert c.get("/api/trash", headers=carol).status_code == 403
         # restore

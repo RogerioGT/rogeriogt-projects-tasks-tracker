@@ -36,8 +36,6 @@ def list_trash(db: Session = Depends(get_db)):
     listed (children come back with the parent). Deleted tasks whose board is
     NOT deleted are listed individually."""
     now = datetime.utcnow()
-    cutoff = now - timedelta(days=TRASH_DAYS)
-
     boards = db.scalars(
         select(Board).where(Board.deleted_at.is_not(None)).order_by(Board.deleted_at.desc())
     ).all()
@@ -50,6 +48,10 @@ def list_trash(db: Session = Depends(get_db)):
     ).all()
     orphan_tasks = [t for t in tasks if t.board_id not in deleted_ids]
 
+    def _days_left(deleted_at):
+        elapsed_days = (now - deleted_at).days
+        return max(0, TRASH_DAYS - elapsed_days)
+
     return {
         "boards": [
             {
@@ -57,7 +59,7 @@ def list_trash(db: Session = Depends(get_db)):
                 "name": b.name,
                 "kind": b.kind,
                 "deleted_at": b.deleted_at.isoformat() if b.deleted_at else None,
-                "expires_in_days": max(0, (cutoff - b.deleted_at).days) if b.deleted_at else 0,
+                "expires_in_days": _days_left(b.deleted_at) if b.deleted_at else 0,
             }
             for b in top_boards
         ],
@@ -66,7 +68,7 @@ def list_trash(db: Session = Depends(get_db)):
                 "id": t.id,
                 "title": t.title,
                 "deleted_at": t.deleted_at.isoformat() if t.deleted_at else None,
-                "expires_in_days": max(0, (cutoff - t.deleted_at).days) if t.deleted_at else 0,
+                "expires_in_days": _days_left(t.deleted_at) if t.deleted_at else 0,
             }
             for t in orphan_tasks
         ],

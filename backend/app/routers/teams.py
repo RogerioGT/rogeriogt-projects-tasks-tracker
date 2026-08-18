@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..deps import get_current_admin
-from ..models import Team, TeamMember, User
+from ..models import BoardAcl, TaskAcl, Team, TeamMember, User
 from ..schemas import (
     TeamCreate,
     TeamMemberIn,
@@ -63,6 +63,15 @@ def delete_team(team_id: str, db: Session = Depends(get_db)):
     team = db.get(Team, team_id)
     if not team:
         raise HTTPException(404, "team not found")
+    # FK cleanup first (foreign_keys pragma is ON): members + shares referencing
+    # this team, otherwise the team row cannot be deleted.
+    for m in db.scalars(select(TeamMember).where(TeamMember.team_id == team_id)).all():
+        db.delete(m)
+    for acl in db.scalars(select(BoardAcl).where(BoardAcl.team_id == team_id)).all():
+        db.delete(acl)
+    for acl in db.scalars(select(TaskAcl).where(TaskAcl.team_id == team_id)).all():
+        db.delete(acl)
+    db.flush()  # delete children before the parent (no ORM relationship defined)
     db.delete(team)
     db.commit()
 

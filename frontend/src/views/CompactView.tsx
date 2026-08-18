@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchBoards, fetchTasks, createTask, toggleComplete, Task } from "../api";
 import { useI18n } from "../i18n";
 import FilterBar, { EMPTY_FILTERS, Filters, filtersToQuery } from "../components/FilterBar";
+import TaskEditDialog from "../components/TaskEditDialog";
 
 const priorityDot: Record<string, string> = { high: "#ef4444", medium: "#f97316", low: "#3b82f6", none: "#6b7280" };
 
@@ -20,13 +21,14 @@ export default function CompactView({ search }: { search: string }) {
 
   const [title, setTitle] = useState("");
   const [targetBoard, setTargetBoard] = useState<string>("");
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   // default board = first available
   const effectiveBoard = targetBoard || (boards && boards[0]?.id) || "";
 
   const createMut = useMutation({
     mutationFn: () => createTask({ board_id: effectiveBoard, title: title.trim() }),
-    onSuccess: () => {
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["tasks"] });
       setTitle("");
     },
@@ -34,7 +36,7 @@ export default function CompactView({ search }: { search: string }) {
 
   const toggleMut = useMutation({
     mutationFn: (id: string) => toggleComplete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
   const handleAdd = (e: React.FormEvent) => {
@@ -66,6 +68,7 @@ export default function CompactView({ search }: { search: string }) {
         {(tasks || []).map((task: Task) => (
           <div
             key={task.id}
+            onClick={() => setEditingTask(task)}
             style={{
               display: "flex",
               alignItems: "center",
@@ -75,9 +78,10 @@ export default function CompactView({ search }: { search: string }) {
               minHeight: "var(--row-h)",
               background: task.status === "done" ? "var(--bg)" : "var(--bg-surface)",
               opacity: task.status === "done" ? 0.6 : 1,
+              cursor: "pointer",
             }}
           >
-            <input type="checkbox" checked={task.status === "done"} onChange={() => toggleMut.mutate(task.id)} style={{ accentColor: "#22c55e", width: 12, height: 12, flexShrink: 0 }} />
+            <input type="checkbox" checked={task.status === "done"} onChange={() => toggleMut.mutate(task.id)} onClick={(e) => e.stopPropagation()} style={{ accentColor: "#22c55e", width: 12, height: 12, flexShrink: 0 }} />
             <span style={{ width: 7, height: 7, borderRadius: 99, background: priorityDot[task.priority], flexShrink: 0 }} />
             <span style={{ flex: 1, fontSize: 11, color: task.status === "done" ? "var(--text-faint)" : "var(--text)", textDecoration: task.status === "done" ? "line-through" : "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {task.title}
@@ -89,7 +93,13 @@ export default function CompactView({ search }: { search: string }) {
         {(tasks || []).length === 0 && <div style={{ padding: 16, textAlign: "center", fontSize: 11, color: "var(--text-faint)" }}>{t("noTasks")}</div>}
       </div>
 
-      <div style={{ fontSize: 10, color: "var(--text-faint)", textAlign: "center" }}>{(tasks || []).length} tasks · most recent first</div>
+      <div style={{ fontSize: 10, color: "var(--text-faint)", textAlign: "center" }}>{(tasks || []).length} tasks · most recent first · click a task to edit</div>
+
+      {editingTask && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }} onClick={() => setEditingTask(null)}>
+          <TaskEditDialog task={editingTask} onClose={() => setEditingTask(null)} />
+        </div>
+      )}
     </div>
   );
 }

@@ -131,9 +131,38 @@ def main():
         bob_stats = c.get("/api/tasks/stats/summary", headers=carol).json()
         assert bob_stats["total"] >= 3
 
+        # ── Custom statuses ────────────────────────────────────────
+        statuses = c.get("/api/statuses", headers=admin).json()
+        names = [s["name"] for s in statuses]
+        assert names == ["not_started", "in_progress", "waiting", "done"], names
+        # any user can add a status
+        r = c.post("/api/statuses", json={"name": "In Review", "color": "#8b5cf6"}, headers=carol)
+        assert r.status_code == 201, r.text
+        # duplicate name -> 409
+        assert c.post("/api/statuses", json={"name": "In Review"}, headers=carol).status_code == 409
+        # tasks can use the custom status
+        assert c.patch(f"/api/tasks/{t2}", json={"status": "In Review"}, headers=admin).status_code == 200
+        # non-admin cannot delete a status
+        assert c.delete(f"/api/statuses/{r.json()['id']}", headers=carol).status_code == 403
+        # admin can delete; existing tasks keep the string
+        assert c.delete(f"/api/statuses/{r.json()['id']}", headers=admin).status_code == 204
+        still = c.get("/api/tasks", headers=carol).json()
+        assert any(t["id"] == t2 and t["status"] == "In Review" for t in still)
+
+        # ── Team delete with members + shares (was 500) ────────────
+        r = c.post("/api/teams", json={"name": "To Delete"}, headers=admin)
+        team2 = r.json()["id"]
+        c.post(f"/api/teams/{team2}/members", json={"user_id": bob_id}, headers=admin)
+        c.post(f"/api/boards/{company_id}/acl", json={"team_id": team2, "permission": "view"}, headers=admin)
+        assert c.delete(f"/api/teams/{team2}", headers=admin).status_code == 204
+        assert c.get(f"/api/teams", headers=admin).status_code == 200
+        # duplicate member -> 409 (friendly, not 500)
+        c.post(f"/api/teams/{team_id}/members", json={"user_id": bob_id}, headers=admin)
+        assert c.post(f"/api/teams/{team_id}/members", json={"user_id": bob_id}, headers=admin).status_code == 409
+
         print("ALL API TESTS PASS")
         print(f"  users: admin + bob + carol; team: {team_id}")
-        print(f"  boards: company + project; tasks: secret + 2 batch")
+        print(f"  boards: company + project; tasks: secret + 2 batch; custom status flow verified")
 
 
 if __name__ == "__main__":

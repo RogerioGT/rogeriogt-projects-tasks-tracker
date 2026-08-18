@@ -122,6 +122,27 @@ class AuthResponse(BaseModel):
 
 
 # --- Sharing ---
+class StatusOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    name: str
+    color: str
+    sort_order: int
+    created_by: str | None
+    created_at: datetime
+
+
+class StatusCreate(BaseModel):
+    name: str
+    color: str | None = None
+
+
+class StatusUpdate(BaseModel):
+    name: str | None = None
+    color: str | None = None
+    sort_order: int | None = None
+
+
 class ShareIn(BaseModel):
     """Share a board subtree with a user OR a team."""
     user_id: str | None = None

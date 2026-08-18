@@ -48,7 +48,7 @@ export type Task = {
   board_id: string;
   title: string;
   description: string | null;
-  status: "not_started" | "in_progress" | "waiting" | "done";
+  status: string; // custom statuses are user-defined; defaults: not_started|in_progress|waiting|done
   priority: "high" | "medium" | "low" | "none";
   assignee: string | null;
   due_date: string | null;
@@ -122,6 +122,15 @@ export type Team = {
   created_by: string | null;
   created_at: string;
   members: TeamMember[];
+};
+
+export type Status = {
+  id: string;
+  name: string;
+  color: string;
+  sort_order: number;
+  created_by: string | null;
+  created_at: string;
 };
 
 /* Boards */
@@ -259,6 +268,20 @@ export function shareTasksBatch(taskIds: string[], payload: { user_id?: string |
     method: "POST",
     body: JSON.stringify({ task_ids: taskIds, ...payload }),
   });
+}
+
+/* Statuses */
+export function fetchStatuses() {
+  return req<Status[]>("/statuses");
+}
+export function createStatus(payload: { name: string; color?: string }) {
+  return req<Status>("/statuses", { method: "POST", body: JSON.stringify(payload) });
+}
+export function updateStatus(id: string, payload: { name?: string; color?: string; sort_order?: number }) {
+  return req<Status>(`/statuses/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+export function deleteStatus(id: string) {
+  return req<void>(`/statuses/${id}`, { method: "DELETE" });
 }
 
 /* Teams */

@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { fetchBoardTree, fetchTasks, createTask, toggleComplete, updateTask, createBoard, updateBoard, deleteBoard, deleteTask, Task, fetchBoards, BoardTreeNode } from "../api";
+import { fetchBoardTree, fetchTasks, fetchStatuses, createTask, toggleComplete, updateTask, createBoard, updateBoard, deleteBoard, deleteTask, Task, fetchBoards, BoardTreeNode } from "../api";
 import { useI18n } from "../i18n";
 import ShareDialog from "../components/ShareDialog";
 
@@ -33,14 +33,19 @@ function TaskRow({
   onShare: () => void;
 }) {
   const { t } = useI18n();
+  const { data: statuses } = useQuery({ queryKey: ["statuses"], queryFn: fetchStatuses });
   const [open, setOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
   const [editDesc, setEditDesc] = useState(task.description || "");
-  const [editStatus, setEditStatus] = useState(task.status);
-  const [editPriority, setEditPriority] = useState(task.priority);
+  const [editStatus, setEditStatus] = useState<string>(task.status);
+  const [editPriority, setEditPriority] = useState<string>(task.priority);
   const [editAssignee, setEditAssignee] = useState(task.assignee || "");
   const [editDue, setEditDue] = useState(task.due_date || "");
   const [editTags, setEditTags] = useState((task.tags || []).join(", "));
+
+  // status options: defined + the task's own
+  const statusOptions = new Set<string>((statuses || []).map((s) => s.name));
+  statusOptions.add(task.status);
 
   const save = () => {
     onUpdate({
@@ -126,11 +131,10 @@ function TaskRow({
           <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder={t("title")} style={inputStyle} />
           <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder={t("description")} rows={2} style={{ ...inputStyle, resize: "vertical" }} />
           <div style={{ display: "flex", gap: 6 }}>
-            <select value={editStatus} onChange={(e) => setEditStatus(e.target.value as Task["status"])} style={inputStyle}>
-              <option value="not_started">{t("not_started")}</option>
-              <option value="in_progress">{t("in_progress")}</option>
-              <option value="waiting">{t("waiting")}</option>
-              <option value="done">{t("done")}</option>
+            <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)} style={inputStyle}>
+              {Array.from(statusOptions).map((s) => (
+                <option key={s} value={s}>{t(s)}</option>
+              ))}
             </select>
             <select value={editPriority} onChange={(e) => setEditPriority(e.target.value as Task["priority"])} style={inputStyle}>
               <option value="high">{t("high")}</option>
@@ -203,11 +207,11 @@ function Column({
 
   const createMut = useMutation({
     mutationFn: (title: string) => createTask({ board_id: board.id, title }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
   const toggleMut = useMutation({
     mutationFn: (id: string) => toggleComplete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
   const updateMut = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Partial<Task> }) => updateTask(id, patch as never),

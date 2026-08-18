@@ -4,6 +4,7 @@ import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, Sor
 import { fetchBoards, fetchTasks, toggleComplete, Task } from "../api";
 import { useI18n } from "../i18n";
 import FilterBar, { EMPTY_FILTERS, Filters, filtersToQuery } from "../components/FilterBar";
+import TaskEditDialog from "../components/TaskEditDialog";
 
 const priorityColor: Record<string, string> = { high: "#ef4444", medium: "#f97316", low: "#3b82f6", none: "#6b7280" };
 
@@ -12,6 +13,7 @@ export default function ListView({ search }: { search: string }) {
   const qc = useQueryClient();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   const { data: boards } = useQuery({ queryKey: ["boards", "flat"], queryFn: fetchBoards });
   const boardName = useMemo(() => {
@@ -123,9 +125,15 @@ export default function ListView({ search }: { search: string }) {
           </thead>
           <tbody>
             {table.getRowModel().rows.map((row) => (
-              <tr key={row.id} style={{ borderBottom: "1px solid var(--border)" }}>
+              <tr
+                key={row.id}
+                style={{ borderBottom: "1px solid var(--border)", cursor: "pointer" }}
+                onClick={() => setEditingTask(row.original)}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = "var(--bg)"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = ""; }}
+              >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} style={{ padding: "5px 8px", color: "var(--text)", borderBottom: "1px solid var(--border)" }}>
+                  <td key={cell.id} style={{ padding: "5px 8px", color: "var(--text)", borderBottom: "1px solid var(--border)" }} onClick={cell.column.id === "check" ? (e) => e.stopPropagation() : undefined}>
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
@@ -141,6 +149,12 @@ export default function ListView({ search }: { search: string }) {
           </tbody>
         </table>
       </div>
+
+      {editingTask && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }} onClick={() => setEditingTask(null)}>
+          <TaskEditDialog task={editingTask} onClose={() => setEditingTask(null)} />
+        </div>
+      )}
     </div>
   );
 }

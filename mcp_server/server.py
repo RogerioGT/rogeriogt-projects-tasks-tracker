@@ -400,5 +400,24 @@ def share_tasks(task_ids: list[str], user: str | None = None, team: str | None =
     return _post("/api/tasks/share", payload)
 
 
+@mcp.tool(description="List custom workflow statuses (Kanban columns).")
+def list_statuses() -> dict:
+    """Return status names with their colors, in display order."""
+    statuses = _get("/api/statuses")
+    return {"statuses": statuses}
+
+
+@mcp.tool(description="Add a custom workflow status (becomes a Kanban column).")
+def add_status(name: str, color: str | None = None) -> dict:
+    """Any logged-in user can add a status; admins can delete them."""
+    return _post("/api/statuses", {"name": name, "color": color})
+
+
+@mcp.tool(description="Delete a custom workflow status by id (admin only). Tasks keep their status text.")
+def delete_status(status_id: str) -> dict:
+    _delete(f"/api/statuses/{status_id}")
+    return {"deleted": status_id}
+
+
 if __name__ == "__main__":
     mcp.run(transport="stdio")

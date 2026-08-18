@@ -125,6 +125,20 @@ class BoardAcl(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
 
+class Status(Base):
+    """A workflow status option. Admins and users can add their own; the 4
+    defaults are seeded. Tasks store the status NAME as a free string, so
+    deleting a status does not break existing tasks."""
+
+    __tablename__ = "statuses"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(60), unique=True)
+    color: Mapped[str] = mapped_column(String(16), default="#64748b")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+
 class Team(Base):
     """A named group of users the admin shares boards/tasks with."""
 

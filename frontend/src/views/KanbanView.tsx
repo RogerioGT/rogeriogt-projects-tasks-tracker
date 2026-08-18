@@ -1,36 +1,38 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchTasks, updateTask, Task } from "../api";
+import { fetchTasks, fetchStatuses, updateTask, Task } from "../api";
 import { useI18n } from "../i18n";
 import FilterBar, { EMPTY_FILTERS, Filters, filtersToQuery } from "../components/FilterBar";
-
-const statuses: Task["status"][] = ["not_started", "in_progress", "waiting", "done"];
-const statusColor: Record<string, string> = {
-  not_started: "#6b7280",
-  in_progress: "#3b82f6",
-  waiting: "#eab308",
-  done: "#22c55e",
-};
+import TaskEditDialog from "../components/TaskEditDialog";
 
 export default function KanbanView({ search }: { search: string }) {
   const { t } = useI18n();
   const qc = useQueryClient();
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+
+  const { data: statuses } = useQuery({ queryKey: ["statuses"], queryFn: fetchStatuses });
   const { data: tasks } = useQuery({
     queryKey: ["tasks", "kanban", filters, search],
     queryFn: () => fetchTasks({ ...filtersToQuery(filters), search: search || undefined }),
   });
 
   const updateMut = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: Task["status"] }) => updateTask(id, { status }),
+    mutationFn: ({ id, status }: { id: string; status: string }) => updateTask(id, { status }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
+
+  // columns = defined statuses (ordered) + any status present on tasks but not defined
+  const defined = statuses || [];
+  const extra = new Set<string>();
+  (tasks || []).forEach((x) => { if (!defined.some((s) => s.name === x.status)) extra.add(x.status); });
+  const columns = [...defined.map((s) => ({ name: s.name, color: s.color })), ...Array.from(extra).map((n) => ({ name: n, color: "#64748b" }))];
 
   const handleDragStart = (e: React.DragEvent, task: Task) => {
     e.dataTransfer.setData("text/plain", task.id);
     e.dataTransfer.effectAllowed = "move";
   };
-  const handleDrop = (e: React.DragEvent, status: Task["status"]) => {
+  const handleDrop = (e: React.DragEvent, status: string) => {
     e.preventDefault();
     const id = e.dataTransfer.getData("text/plain");
     if (id) updateMut.mutate({ id, status });
@@ -44,13 +46,13 @@ export default function KanbanView({ search }: { search: string }) {
       </div>
 
       <div style={{ display: "flex", gap: 6, flex: 1, overflowX: "auto", alignItems: "flex-start", paddingBottom: 8 }}>
-        {statuses.map((st) => {
-          const colTasks = (tasks || []).filter((x) => x.status === st);
+        {columns.map((col) => {
+          const colTasks = (tasks || []).filter((x) => x.status === col.name);
           return (
             <div
-              key={st}
+              key={col.name}
               onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => handleDrop(e, st)}
+              onDrop={(e) => handleDrop(e, col.name)}
               style={{
                 minWidth: 240,
                 width: 240,
@@ -64,8 +66,8 @@ export default function KanbanView({ search }: { search: string }) {
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px", borderBottom: "1px solid var(--border)", background: "var(--bg-elevated)", borderRadius: "6px 6px 0 0" }}>
-                <span style={{ width: 8, height: 8, borderRadius: 99, background: statusColor[st] }} />
-                <span style={{ fontSize: 11, fontWeight: 600 }}>{t(st)}</span>
+                <span style={{ width: 8, height: 8, borderRadius: 99, background: col.color }} />
+                <span style={{ fontSize: 11, fontWeight: 600 }}>{t(col.name)}</span>
                 <span style={{ fontSize: 10, color: "var(--text-faint)", background: "var(--bg)", padding: "1px 5px", borderRadius: 99, border: "1px solid var(--border)" }}>{colTasks.length}</span>
               </div>
               <div style={{ flex: 1, overflow: "auto", padding: 6, display: "flex", flexDirection: "column", gap: 4 }}>
@@ -74,6 +76,7 @@ export default function KanbanView({ search }: { search: string }) {
                     key={task.id}
                     draggable
                     onDragStart={(e) => handleDragStart(e, task)}
+                    onClick={() => setEditingTask(task)}
                     style={{
                       border: "1px solid var(--border)",
                       borderRadius: 4,
@@ -84,6 +87,7 @@ export default function KanbanView({ search }: { search: string }) {
                       flexDirection: "column",
                       gap: 3,
                     }}
+                    title={t("editTask")}
                   >
                     <div style={{ fontSize: 11, color: "var(--text)", lineHeight: 1.35, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{task.title}</div>
                     <div style={{ display: "flex", gap: 4, fontSize: 10, color: "var(--text-faint)" }}>
@@ -100,7 +104,13 @@ export default function KanbanView({ search }: { search: string }) {
         })}
       </div>
 
-      <div style={{ fontSize: 10, color: "var(--text-faint)" }}>Drag cards between columns to change status.</div>
+      <div style={{ fontSize: 10, color: "var(--text-faint)" }}>Drag cards between columns to change status. Click a card to edit.</div>
+
+      {editingTask && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }} onClick={() => setEditingTask(null)}>
+          <TaskEditDialog task={editingTask} onClose={() => setEditingTask(null)} />
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchBoards, Board } from "../api";
+import { fetchBoards, fetchStatuses, Board } from "../api";
 import { useI18n } from "../i18n";
 
 export type Filters = {
@@ -34,6 +34,7 @@ export default function FilterBar({
 }) {
   const { t } = useI18n();
   const { data: boards } = useQuery({ queryKey: ["boards", "flat"], queryFn: fetchBoards });
+  const { data: statuses } = useQuery({ queryKey: ["statuses"], queryFn: fetchStatuses });
 
   const { companies, projectsByCompany } = useMemo(() => {
     const all = (boards || []) as Board[];
@@ -82,10 +83,9 @@ export default function FilterBar({
       )}
       <select value={filters.status} onChange={(e) => set({ status: e.target.value })} style={selStyle}>
         <option value="">{t("status")}: {t("all")}</option>
-        <option value="not_started">{t("not_started")}</option>
-        <option value="in_progress">{t("in_progress")}</option>
-        <option value="waiting">{t("waiting")}</option>
-        <option value="done">{t("done")}</option>
+        {(statuses || []).map((s) => (
+          <option key={s.name} value={s.name}>{t(s.name)}</option>
+        ))}
       </select>
       <select value={filters.priority} onChange={(e) => set({ priority: e.target.value })} style={selStyle}>
         <option value="">{t("priority")}: {t("all")}</option>

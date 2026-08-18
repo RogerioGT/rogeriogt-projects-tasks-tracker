@@ -3,10 +3,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchUsers,
   fetchTeams,
+  fetchStatuses,
+  createStatus,
+  updateStatus,
+  deleteStatus,
   adminCreateUser,
   adminUpdateUser,
   createTeam,
-  renameTeam,
   deleteTeam,
   addTeamMember,
   removeTeamMember,
@@ -32,14 +35,41 @@ const btnStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
+type Tab = "users" | "teams" | "statuses";
+
+function friendlyError(e: unknown): string {
+  const m = e instanceof Error ? e.message : String(e);
+  // API errors arrive as "HTTP <code>: {...}" or plain "{...}". Extract detail.
+  const jsonMatch = m.match(/\{.*\}/s);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed && parsed.detail) {
+        return typeof parsed.detail === "string" ? parsed.detail : JSON.stringify(parsed.detail);
+      }
+    } catch {
+      /* not json */
+    }
+  }
+  return m;
+}
+
 export default function AdminPanel({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<"users" | "teams">("users");
+  const [tab, setTab] = useState<Tab>("users");
   const [error, setError] = useState("");
+  const [msg, setMsg] = useState("");
 
   const { data: users } = useQuery({ queryKey: ["users"], queryFn: fetchUsers });
   const { data: teams } = useQuery({ queryKey: ["teams"], queryFn: fetchTeams });
+  const { data: statuses } = useQuery({ queryKey: ["statuses"], queryFn: fetchStatuses });
+
+  const flash = (message: string, isError = false) => {
+    if (isError) setError(message);
+    else setMsg(message);
+    setTimeout(() => { setError(""); setMsg(""); }, 4000);
+  };
 
   // users form
   const [uEmail, setUEmail] = useState("");
@@ -48,34 +78,50 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
   const [uAdmin, setUAdmin] = useState(false);
   const createUserMut = useMutation({
     mutationFn: () => adminCreateUser({ email: uEmail, name: uName, password: uPass, is_admin: uAdmin }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["users"] }); setUEmail(""); setUName(""); setUPass(""); setUAdmin(false); },
-    onError: (e) => setError(e instanceof Error ? e.message : String(e)),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["users"] }); setUEmail(""); setUName(""); setUPass(""); setUAdmin(false); flash(t("saved")); },
+    onError: (e) => flash(friendlyError(e), true),
   });
   const updateUserMut = useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: Parameters<typeof adminUpdateUser>[1] }) => adminUpdateUser(id, patch),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
-    onError: (e) => setError(e instanceof Error ? e.message : String(e)),
+    onError: (e) => flash(friendlyError(e), true),
   });
 
-  // teams form
+  // teams
   const [teamName, setTeamName] = useState("");
   const createTeamMut = useMutation({
     mutationFn: () => createTeam(teamName),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["teams"] }); setTeamName(""); },
-    onError: (e) => setError(e instanceof Error ? e.message : String(e)),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["teams"] }); setTeamName(""); flash(t("saved")); },
+    onError: (e) => flash(friendlyError(e), true),
   });
   const deleteTeamMut = useMutation({
     mutationFn: (id: string) => deleteTeam(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["teams"] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["teams"] }); flash(t("saved")); },
+    onError: (e) => flash(friendlyError(e), true),
   });
   const addMemberMut = useMutation({
     mutationFn: ({ teamId, userId }: { teamId: string; userId: string }) => addTeamMember(teamId, userId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["teams"] }),
-    onError: (e) => setError(e instanceof Error ? e.message : String(e)),
+    onError: (e) => flash(friendlyError(e), true),
   });
   const removeMemberMut = useMutation({
     mutationFn: ({ teamId, userId }: { teamId: string; userId: string }) => removeTeamMember(teamId, userId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["teams"] }),
+    onError: (e) => flash(friendlyError(e), true),
+  });
+
+  // statuses
+  const [statusName, setStatusName] = useState("");
+  const [statusColor, setStatusColor] = useState("#64748b");
+  const createStatusMut = useMutation({
+    mutationFn: () => createStatus({ name: statusName, color: statusColor }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["statuses"] }); setStatusName(""); flash(t("saved")); },
+    onError: (e) => flash(friendlyError(e), true),
+  });
+  const deleteStatusMut = useMutation({
+    mutationFn: (id: string) => deleteStatus(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["statuses"] }); flash(t("saved")); },
+    onError: (e) => flash(friendlyError(e), true),
   });
 
   const userName = (id: string) => {
@@ -84,24 +130,26 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, padding: 16, minWidth: 480, maxWidth: 560, maxHeight: "80vh", overflow: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+    <div onClick={(e) => e.stopPropagation()} style={{ background: "var(--bg-elevated)", border: "1px solid var(--border)", borderRadius: 8, padding: 16, width: "95vw", maxWidth: "95vw", maxHeight: "85vh", overflow: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontSize: 12, fontWeight: 700 }}>{t("settings")}</span>
         <div style={{ flex: 1 }} />
-        <div style={{ display: "flex", gap: 2 }}>
+        <div style={{ display: "flex", gap: 2, flexWrap: "wrap" }}>
           <button onClick={() => setTab("users")} style={{ ...btnStyle, background: tab === "users" ? "var(--bg)" : "transparent" }}>{t("people")}</button>
           <button onClick={() => setTab("teams")} style={{ ...btnStyle, background: tab === "teams" ? "var(--bg)" : "transparent" }}>{t("teams")}</button>
+          <button onClick={() => setTab("statuses")} style={{ ...btnStyle, background: tab === "statuses" ? "var(--bg)" : "transparent" }}>{t("statuses")}</button>
         </div>
       </div>
 
-      {error && <div style={{ fontSize: 10, color: "#ef4444" }}>{error}</div>}
+      {error && <div style={{ fontSize: 11, color: "#ef4444", border: "1px solid #ef444455", borderRadius: 4, padding: "6px 8px", background: "#ef444411" }}>{error}</div>}
+      {msg && <div style={{ fontSize: 11, color: "#22c55e", border: "1px solid #22c55e55", borderRadius: 4, padding: "6px 8px", background: "#22c55e11" }}>{msg}</div>}
 
       {tab === "users" && (
         <>
-          <div style={{ display: "flex", gap: 6 }}>
-            <input value={uName} onChange={(e) => setUName(e.target.value)} placeholder={t("name")} style={{ ...inputStyle, flex: 1 }} />
-            <input value={uEmail} onChange={(e) => setUEmail(e.target.value)} placeholder={t("email")} style={{ ...inputStyle, flex: 1.4 }} />
-            <input type="password" value={uPass} onChange={(e) => setUPass(e.target.value)} placeholder={t("password")} style={{ ...inputStyle, flex: 1 }} />
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <input value={uName} onChange={(e) => setUName(e.target.value)} placeholder={t("name")} style={{ ...inputStyle, flex: 1, minWidth: 120 }} />
+            <input value={uEmail} onChange={(e) => setUEmail(e.target.value)} placeholder={t("email")} style={{ ...inputStyle, flex: 1.4, minWidth: 160 }} />
+            <input type="password" value={uPass} onChange={(e) => setUPass(e.target.value)} placeholder={t("password")} style={{ ...inputStyle, flex: 1, minWidth: 120 }} />
             <label style={{ fontSize: 10, display: "flex", alignItems: "center", gap: 3, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
               <input type="checkbox" checked={uAdmin} onChange={(e) => setUAdmin(e.target.checked)} /> {t("admin")}
             </label>
@@ -110,8 +158,8 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {(users || []).map((u) => (
-              <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, padding: "4px 6px", border: "1px solid var(--border)", borderRadius: 4 }}>
-                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div key={u.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, padding: "4px 6px", border: "1px solid var(--border)", borderRadius: 4, flexWrap: "wrap" }}>
+                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 150 }}>
                   {u.name || u.email} <span style={{ color: "var(--text-faint)" }}>({u.email})</span>
                 </span>
                 {u.is_admin && <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 99, background: "#8b5cf622", color: "#a78bfa", border: "1px solid #8b5cf655" }}>{t("admin")}</span>}
@@ -140,7 +188,7 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {(teams || []).map((team) => {
               const memberIds = new Set(team.members.map((m) => m.user_id));
-              const candidates = (users || []).filter((u) => !memberIds.has(u.id));
+              const candidates = (users || []).filter((u) => !memberIds.has(u.id) && u.is_active);
               return (
                 <div key={team.id} style={{ border: "1px solid var(--border)", borderRadius: 6, padding: 8, display: "flex", flexDirection: "column", gap: 6 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -148,18 +196,11 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
                     <span style={{ fontSize: 10, color: "var(--text-faint)" }}>{team.members.length} {t("members")}</span>
                     <button onClick={() => deleteTeamMut.mutate(team.id)} style={{ ...btnStyle, color: "#ef4444", borderColor: "#ef444455", fontSize: 10, padding: "2px 6px" }}>x</button>
                   </div>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <select
-                      defaultValue=""
-                      onChange={(e) => { if (e.target.value) addMemberMut.mutate({ teamId: team.id, userId: e.target.value }); }}
-                      style={{ ...inputStyle, flex: 1 }}
-                    >
-                      <option value="">{t("addUser")}...</option>
-                      {candidates.map((u) => (
-                        <option key={u.id} value={u.id}>{u.name || u.email}</option>
-                      ))}
-                    </select>
-                  </div>
+                  {candidates.length > 0 ? (
+                    <MemberSelect teamId={team.id} candidates={candidates} onAdd={(userId) => addMemberMut.mutate({ teamId: team.id, userId })} label={t("addUser")} />
+                  ) : (
+                    <span style={{ fontSize: 10, color: "var(--text-faint)" }}>{t("noUsersToAdd")}</span>
+                  )}
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                     {team.members.map((m) => (
                       <span key={m.id} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 99, background: "var(--bg)", border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 5 }}>
@@ -167,7 +208,7 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
                         <button onClick={() => removeMemberMut.mutate({ teamId: team.id, userId: m.user_id })} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0, fontSize: 10 }}>x</button>
                       </span>
                     ))}
-                    {team.members.length === 0 && <span style={{ fontSize: 10, color: "var(--text-faint)" }}>{t("noTasks")}</span>}
+                    {team.members.length === 0 && <span style={{ fontSize: 10, color: "var(--text-faint)" }}>{t("noMembers")}</span>}
                   </div>
                 </div>
               );
@@ -176,9 +217,62 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
         </>
       )}
 
+      {tab === "statuses" && (
+        <>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <input value={statusName} onChange={(e) => setStatusName(e.target.value)} placeholder={t("newStatusPlaceholder")} style={{ ...inputStyle, flex: 1, minWidth: 160 }} onKeyDown={(e) => { if (e.key === "Enter") createStatusMut.mutate(); }} />
+            <input type="color" value={statusColor} onChange={(e) => setStatusColor(e.target.value)} style={{ width: 36, height: 27, padding: 0, border: "1px solid var(--border)", borderRadius: 4, background: "var(--bg)", cursor: "pointer" }} />
+            <button onClick={() => createStatusMut.mutate()} disabled={!statusName.trim()} style={{ ...btnStyle, background: "#3b82f6", color: "#fff", borderColor: "#3b82f6", opacity: statusName.trim() ? 1 : 0.5 }}>{t("addStatus")}</button>
+          </div>
+          <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{t("statusesHint")}</div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {(statuses || []).map((s) => (
+              <span key={s.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, padding: "4px 10px", borderRadius: 99, border: `1px solid ${s.color}55`, background: `${s.color}14` }}>
+                <span style={{ width: 8, height: 8, borderRadius: 99, background: s.color }} />
+                {t(s.name)}
+                <button onClick={() => deleteStatusMut.mutate(s.id)} title={t("remove")} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: 0, fontSize: 11 }}>x</button>
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button onClick={onClose} style={btnStyle}>{t("close")}</button>
       </div>
     </div>
+  );
+}
+
+/** Controlled select that resets to placeholder after adding. */
+function MemberSelect({
+  teamId,
+  candidates,
+  onAdd,
+  label,
+}: {
+  teamId: string;
+  candidates: { id: string; name: string; email: string }[];
+  onAdd: (userId: string) => void;
+  label: string;
+}) {
+  const [value, setValue] = useState("");
+  return (
+    <select
+      value={value}
+      onChange={(e) => {
+        const v = e.target.value;
+        if (!v) return;
+        setValue("");
+        onAdd(v);
+      }}
+      style={{ ...inputStyle, width: "100%" }}
+    >
+      <option value="">{label}...</option>
+      {candidates.map((u) => (
+        <option key={`${teamId}-${u.id}`} value={u.id}>{u.name || u.email}</option>
+      ))}
+    </select>
   );
 }

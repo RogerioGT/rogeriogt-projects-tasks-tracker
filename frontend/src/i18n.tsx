@@ -51,6 +51,8 @@ const dict: Dict = {
   archive: { en: "Archive", es: "Archivar" },
   newTaskBtn: { en: "+ New task", es: "+ Nueva tarea" },
   description: { en: "Description", es: "Descripcion" },
+  editTask: { en: "Edit task", es: "Editar tarea" },
+  confirmDelete: { en: "Delete this permanently?", es: "Eliminar esto permanentemente?" },
   tags: { en: "Tags", es: "Etiquetas" },
   title: { en: "Title", es: "Titulo" },
   boardLabel: { en: "Board", es: "Tablero" },
@@ -106,6 +108,12 @@ const dict: Dict = {
   shareSelected: { en: "Share selected", es: "Compartir seleccionados" },
   saved: { en: "Saved", es: "Guardado" },
   remove: { en: "Remove", es: "Quitar" },
+  statuses: { en: "Statuses", es: "Estados" },
+  addStatus: { en: "Add status", es: "Agregar estado" },
+  newStatusPlaceholder: { en: "New status name (e.g. In Review)", es: "Nombre del nuevo estado (ej. En Revision)" },
+  statusesHint: { en: "Statuses appear as Kanban columns and in every status dropdown. Deleting one keeps tasks intact.", es: "Los estados aparecen como columnas Kanban y en cada lista de estados. Eliminar uno no borra tareas." },
+  noUsersToAdd: { en: "No other active users yet. Add them in the People tab.", es: "Aun no hay otros usuarios activos. Agregalos en la pestana Personas." },
+  noMembers: { en: "No members yet", es: "Sin miembros aun" },
 };
 
 export type TKey = keyof typeof dict;

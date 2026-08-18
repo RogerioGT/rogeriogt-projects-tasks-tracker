@@ -8,10 +8,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import Base, SessionLocal, engine
-from .routers import boards, tasks, events, auth, sharing, teams
+from .routers import boards, tasks, events, auth, sharing, teams, statuses
 from .seed import seed
 from .migrations import run_migrations
 from .routers.auth import bootstrap_admin
+from .routers.statuses import seed_statuses
 
 Base.metadata.create_all(bind=engine)
 run_migrations()
@@ -32,6 +33,7 @@ app.include_router(events.router)
 app.include_router(auth.router)
 app.include_router(sharing.router)
 app.include_router(teams.router)
+app.include_router(statuses.router)
 
 # Serve the built frontend if present (SPA). Falls back to API root otherwise.
 _FRONTEND_DIR = Path(os.environ.get("FRONTEND_DIR", "/app/frontend/dist"))
@@ -44,6 +46,7 @@ def _seed_on_startup():
     db = SessionLocal()
     try:
         seed(db)
+        seed_statuses(db)
         bootstrap_admin(db)
     finally:
         db.close()

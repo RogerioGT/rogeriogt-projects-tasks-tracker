@@ -62,6 +62,18 @@ export type StatsSummary = {
   completion_rate: number;
 };
 
+export type Event = {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  user_id: string | null;
+  action: string;
+  field: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  created_at: string;
+};
+
 /* Boards */
 export function fetchBoards() {
   return req<Board[]>("/boards");
@@ -125,4 +137,14 @@ export function deleteTask(id: string) {
 
 export function fetchStats() {
   return req<StatsSummary>("/tasks/stats/summary");
+}
+
+/* Events */
+export function fetchEvents(params: { entity_type?: string; action?: string; limit?: number } = {}) {
+  const q = new URLSearchParams();
+  if (params.entity_type) q.set("entity_type", params.entity_type);
+  if (params.action) q.set("action", params.action);
+  if (params.limit) q.set("limit", String(params.limit));
+  const qs = q.toString();
+  return req<Event[]>(`/events${qs ? `?${qs}` : ""}`);
 }

@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import Base, SessionLocal, engine
-from .routers import boards, tasks
+from .routers import boards, tasks, events
 from .seed import seed
 
 Base.metadata.create_all(bind=engine)
@@ -25,6 +25,7 @@ app.add_middleware(
 
 app.include_router(boards.router)
 app.include_router(tasks.router)
+app.include_router(events.router)
 
 # Serve the built frontend if present (SPA). Falls back to API root otherwise.
 _FRONTEND_DIR = Path(os.environ.get("FRONTEND_DIR", "/app/frontend/dist"))

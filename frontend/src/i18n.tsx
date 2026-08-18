@@ -11,6 +11,11 @@ const dict: Dict = {
   list: { en: "List", es: "Lista" },
   compact: { en: "Compact", es: "Compacta" },
   dashboard: { en: "Dashboard", es: "Panel" },
+  history: { en: "History", es: "Historial" },
+  all: { en: "All", es: "Todo" },
+  tasks: { en: "Tasks", es: "Tareas" },
+  boards: { en: "Boards", es: "Tableros" },
+  noHistory: { en: "No activity yet", es: "Sin actividad aun" },
 
   not_started: { en: "Not started", es: "No iniciado" },
   in_progress: { en: "In progress", es: "En progreso" },

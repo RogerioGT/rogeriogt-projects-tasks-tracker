@@ -78,3 +78,16 @@ class TaskOut(BaseModel):
 class TaskMove(BaseModel):
     board_id: str
     position: int | None = None
+
+
+class EventOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    entity_type: str
+    entity_id: str
+    user_id: str | None
+    action: str
+    field: str | None
+    old_value: str | None
+    new_value: str | None
+    created_at: datetime

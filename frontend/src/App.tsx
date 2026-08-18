@@ -6,8 +6,9 @@ import KanbanView from "./views/KanbanView";
 import ListView from "./views/ListView";
 import CompactView from "./views/CompactView";
 import DashboardView from "./views/DashboardView";
+import HistoryView from "./views/HistoryView";
 
-type ViewKey = "board" | "kanban" | "list" | "compact" | "dashboard";
+type ViewKey = "board" | "kanban" | "list" | "compact" | "dashboard" | "history";
 
 const qc = new QueryClient({
   defaultOptions: { queries: { staleTime: 10_000, retry: 1 } },
@@ -48,6 +49,7 @@ function TopBar({
     { key: "list", label: t("list") },
     { key: "compact", label: t("compact") },
     { key: "dashboard", label: t("dashboard") },
+    { key: "history", label: t("history") },
   ];
 
   return (
@@ -175,6 +177,7 @@ function AppInner() {
         {view === "list" && <ListView search={search} />}
         {view === "compact" && <CompactView search={search} />}
         {view === "dashboard" && <DashboardView />}
+        {view === "history" && <HistoryView />}
       </main>
     </div>
   );

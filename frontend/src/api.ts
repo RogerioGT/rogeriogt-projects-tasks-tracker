@@ -1,10 +1,16 @@
 /* Typed fetch helpers — base URL /api (Vite proxy -> :8787) */
 
 const BASE = "/api";
+const TOKEN_KEY = "tasks_tracker_token";
 
 async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
+  const token = localStorage.getItem(TOKEN_KEY);
   const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(opts.headers || {}),
+    },
     ...opts,
   });
   if (!res.ok) {
@@ -167,18 +173,12 @@ export function fetchEvents(params: { entity_type?: string; action?: string; lim
 }
 
 /* Auth */
-const TOKEN_KEY = "tasks_tracker_token";
-
 export function getToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
 export function setToken(token: string | null) {
   if (token) localStorage.setItem(TOKEN_KEY, token);
   else localStorage.removeItem(TOKEN_KEY);
-}
-function authHeaders(): Record<string, string> {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export function register(payload: { email: string; name?: string; password: string }) {
@@ -194,7 +194,7 @@ export function login(payload: { email: string; password: string }) {
   });
 }
 export function fetchMe() {
-  return req<User>("/auth/me", { headers: authHeaders() });
+  return req<User>("/auth/me");
 }
 export function fetchUsers() {
   return req<User[]>("/auth/users");
@@ -208,7 +208,6 @@ export function shareBoard(boardId: string, payload: { user_id: string; permissi
   return req<Share>(`/boards/${boardId}/acl`, {
     method: "POST",
     body: JSON.stringify(payload),
-    headers: authHeaders(),
   });
 }
 export function unshareBoard(boardId: string, userId: string) {

@@ -28,6 +28,11 @@ class BoardMove(BaseModel):
     position: int | None = None
 
 
+class BoardKindChange(BaseModel):
+    """Convert hierarchy level: section | company | project."""
+    kind: str
+
+
 class BoardOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str

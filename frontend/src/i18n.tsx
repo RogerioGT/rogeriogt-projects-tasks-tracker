@@ -56,8 +56,8 @@ const dict: Dict = {
   moveWarning: { en: "This will move the project and ALL its tasks and sub-projects. It cannot be undone.", es: "Esto movera el proyecto y TODAS sus tareas y sub-proyectos. No se puede deshacer." },
   move: { en: "Move", es: "Mover" },
   moveTo: { en: "to", es: "a" },
-  deleteBoardWarning: { en: "Delete this board and ALL its tasks and sub-projects? This cannot be undone.", es: "Eliminar este tablero y TODAS sus tareas y sub-proyectos? No se puede deshacer." },
-  deleteTaskWarning: { en: "Delete this task permanently?", es: "Eliminar esta tarea permanentemente?" },
+  deleteBoardWarning: { en: "Delete this board and ALL its tasks and sub-projects? You can restore it from the Trash within 30 days.", es: "Eliminar este tablero y TODAS sus tareas y sub-proyectos? Puedes restaurarlo desde la Papelera dentro de 30 dias." },
+  deleteTaskWarning: { en: "Delete this task? You can restore it from the Trash within 30 days.", es: "Eliminar esta tarea? Puedes restaurarla desde la Papelera dentro de 30 dias." },
   deleteTeamWarning: { en: "Delete this team? Shares given through it will be removed.", es: "Eliminar este equipo? Los accesos compartidos a traves de el se quitaran." },
   deleteStatusWarning: { en: "Delete this status? Tasks using it keep their status text.", es: "Eliminar este estado? Las tareas que lo usan conservan su texto." },
   removeMemberWarning: { en: "Remove this member from the team?", es: "Quitar a este miembro del equipo?" },
@@ -130,6 +130,15 @@ const dict: Dict = {
   statusesHint: { en: "Statuses appear as Kanban columns and in every status dropdown. Deleting one keeps tasks intact.", es: "Los estados aparecen como columnas Kanban y en cada lista de estados. Eliminar uno no borra tareas." },
   noUsersToAdd: { en: "No other active users yet. Add them in the People tab.", es: "Aun no hay otros usuarios activos. Agregalos en la pestana Personas." },
   noMembers: { en: "No members yet", es: "Sin miembros aun" },
+  trash: { en: "Trash", es: "Papelera" },
+  restore: { en: "Restore", es: "Restaurar" },
+  deleteForever: { en: "Delete forever", es: "Eliminar definitivamente" },
+  trashEmpty: { en: "Trash is empty", es: "La papelera esta vacia" },
+  trashHint: { en: "Deleted items stay here for 30 days, then they are removed automatically.", es: "Los elementos eliminados permanecen aqui 30 dias, luego se eliminan automaticamente." },
+  daysLeft: { en: "days left", es: "dias restantes" },
+  convertTo: { en: "Convert to", es: "Convertir a" },
+  convertBoardConfirm: { en: "Change this board's level? Tasks and sub-boards come along.", es: "Cambiar el nivel de este tablero? Las tareas y sub-tableros van con el." },
+  deleteForeverWarning: { en: "Delete this forever? This cannot be undone.", es: "Eliminar esto definitivamente? No se puede deshacer." },
 };
 
 export type TKey = keyof typeof dict;

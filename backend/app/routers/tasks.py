@@ -52,7 +52,7 @@ def list_tasks(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    q = select(Task)
+    q = select(Task).where(Task.deleted_at.is_(None))
     visible = visible_task_ids(db, user)
     if visible is not None:
         q = q.where(Task.id.in_(visible))
@@ -232,22 +232,20 @@ def convert_to_project(task_id: str, db: Session = Depends(get_db), user: User =
 
 @router.delete("/{task_id}", status_code=204)
 def delete_task(task_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Soft delete: moves the task to the Trash (restorable for 30 days)."""
     task = db.get(Task, task_id)
-    if not task:
+    if not task or task.deleted_at is not None:
         raise HTTPException(404, "task not found")
     if task_permission(db, user, task_id) != "edit":
         raise HTTPException(403, "no edit permission on this task")
-    _log(db, "task", task_id, "delete", user_id=user.id)
-    for acl in db.scalars(select(TaskAcl).where(TaskAcl.task_id == task_id)).all():
-        db.delete(acl)
-    db.flush()
-    db.delete(task)
+    _log(db, "task", task_id, "delete", user_id=user.id, new="trash")
+    task.deleted_at = datetime.utcnow()
     db.commit()
 
 
 @router.get("/stats/summary")
 def stats(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    q = select(func.count(Task.id))
+    q = select(func.count(Task.id)).where(Task.deleted_at.is_(None))
     visible = visible_task_ids(db, user)
     if visible is not None:
         q = q.where(Task.id.in_(visible))

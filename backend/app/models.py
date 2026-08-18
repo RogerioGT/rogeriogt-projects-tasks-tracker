@@ -55,6 +55,7 @@ class Board(Base):
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     parent: Mapped["Board | None"] = relationship(
         "Board", remote_side=[id], back_populates="children"
@@ -88,6 +89,7 @@ class Task(Base):
     updated_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     board: Mapped["Board"] = relationship("Board", back_populates="tasks")
 

@@ -4,6 +4,11 @@ import {
   fetchUsers,
   fetchTeams,
   fetchStatuses,
+  fetchTrash,
+  restoreBoard,
+  restoreTask,
+  purgeBoard,
+  purgeTask,
   createStatus,
   updateStatus,
   deleteStatus,
@@ -35,7 +40,7 @@ const btnStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-type Tab = "users" | "teams" | "statuses";
+type Tab = "users" | "teams" | "statuses" | "trash";
 
 function friendlyError(e: unknown): string {
   const m = e instanceof Error ? e.message : String(e);
@@ -138,6 +143,7 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
           <button onClick={() => setTab("users")} style={{ ...btnStyle, background: tab === "users" ? "var(--bg)" : "transparent" }}>{t("people")}</button>
           <button onClick={() => setTab("teams")} style={{ ...btnStyle, background: tab === "teams" ? "var(--bg)" : "transparent" }}>{t("teams")}</button>
           <button onClick={() => setTab("statuses")} style={{ ...btnStyle, background: tab === "statuses" ? "var(--bg)" : "transparent" }}>{t("statuses")}</button>
+          <button onClick={() => setTab("trash")} style={{ ...btnStyle, background: tab === "trash" ? "var(--bg)" : "transparent" }}>{t("trash")}</button>
         </div>
       </div>
 
@@ -238,9 +244,76 @@ export default function AdminPanel({ onClose }: { onClose: () => void }) {
         </>
       )}
 
+      {tab === "trash" && <TrashTab />}
+
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button onClick={onClose} style={btnStyle}>{t("close")}</button>
       </div>
+    </div>
+  );
+}
+
+function TrashTab() {
+  const { t } = useI18n();
+  const qc = useQueryClient();
+  const { data: trash } = useQuery({ queryKey: ["trash"], queryFn: fetchTrash });
+
+  const restoreBoardMut = useMutation({
+    mutationFn: (id: string) => restoreBoard(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["trash"] }); qc.invalidateQueries({ queryKey: ["boards"] }); qc.invalidateQueries({ queryKey: ["tasks"] }); },
+  });
+  const restoreTaskMut = useMutation({
+    mutationFn: (id: string) => restoreTask(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["trash"] }); qc.invalidateQueries({ queryKey: ["tasks"] }); },
+  });
+  const purgeBoardMut = useMutation({
+    mutationFn: (id: string) => purgeBoard(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["trash"] }),
+  });
+  const purgeTaskMut = useMutation({
+    mutationFn: (id: string) => purgeTask(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["trash"] }),
+  });
+
+  const boards = trash?.boards || [];
+  const tasks = trash?.tasks || [];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ fontSize: 10, color: "var(--text-muted)" }}>{t("trashHint")}</div>
+
+      {boards.length === 0 && tasks.length === 0 && (
+        <div style={{ fontSize: 11, color: "var(--text-faint)", textAlign: "center", padding: 16 }}>{t("trashEmpty")}</div>
+      )}
+
+      {boards.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, letterSpacing: 0.4 }}>{t("boards").toUpperCase()}</div>
+          {boards.map((b) => (
+            <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, padding: "5px 8px", border: "1px solid var(--border)", borderRadius: 4, flexWrap: "wrap" }}>
+              <span style={{ flex: 1, minWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span>
+              <span style={{ fontSize: 9, padding: "1px 5px", borderRadius: 99, background: "#6b728022", border: "1px solid var(--border)", color: "var(--text-muted)" }}>{b.kind}</span>
+              <span style={{ fontSize: 10, color: "var(--text-faint)", whiteSpace: "nowrap" }}>{b.expires_in_days} {t("daysLeft")}</span>
+              <button onClick={() => restoreBoardMut.mutate(b.id)} style={{ ...btnStyle, fontSize: 10, padding: "3px 8px", color: "#22c55e", borderColor: "#22c55e55" }}>{t("restore")}</button>
+              <button onClick={() => { if (confirm(t("deleteForeverWarning"))) purgeBoardMut.mutate(b.id); }} style={{ ...btnStyle, fontSize: 10, padding: "3px 8px", color: "#ef4444", borderColor: "#ef444455" }}>{t("deleteForever")}</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tasks.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 700, letterSpacing: 0.4 }}>{t("tasks").toUpperCase()}</div>
+          {tasks.map((tr) => (
+            <div key={tr.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, padding: "5px 8px", border: "1px solid var(--border)", borderRadius: 4, flexWrap: "wrap" }}>
+              <span style={{ flex: 1, minWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tr.title}</span>
+              <span style={{ fontSize: 10, color: "var(--text-faint)", whiteSpace: "nowrap" }}>{tr.expires_in_days} {t("daysLeft")}</span>
+              <button onClick={() => restoreTaskMut.mutate(tr.id)} style={{ ...btnStyle, fontSize: 10, padding: "3px 8px", color: "#22c55e", borderColor: "#22c55e55" }}>{t("restore")}</button>
+              <button onClick={() => { if (confirm(t("deleteForeverWarning"))) purgeTaskMut.mutate(tr.id); }} style={{ ...btnStyle, fontSize: 10, padding: "3px 8px", color: "#ef4444", borderColor: "#ef444455" }}>{t("deleteForever")}</button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

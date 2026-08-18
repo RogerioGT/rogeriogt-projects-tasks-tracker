@@ -151,6 +151,9 @@ export function updateBoard(id: string, payload: Partial<{ name: string; parent_
 export function moveBoard(id: string, payload: { parent_id: string | null; position: number | null }) {
   return req<Board>(`/boards/${id}/move`, { method: "POST", body: JSON.stringify(payload) });
 }
+export function convertBoardKind(id: string, kind: "section" | "company" | "project") {
+  return req<Board>(`/boards/${id}/convert`, { method: "POST", body: JSON.stringify({ kind }) });
+}
 export function deleteBoard(id: string) {
   return req<void>(`/boards/${id}`, { method: "DELETE" });
 }
@@ -328,4 +331,23 @@ export function changePassword(currentPassword: string, newPassword: string) {
     method: "POST",
     body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
   });
+}
+
+/* Trash */
+export type TrashBoard = { id: string; name: string; kind: string; deleted_at: string; expires_in_days: number };
+export type TrashTask = { id: string; title: string; deleted_at: string; expires_in_days: number };
+export function fetchTrash() {
+  return req<{ boards: TrashBoard[]; tasks: TrashTask[]; trash_days: number }>("/trash");
+}
+export function restoreBoard(id: string) {
+  return req<{ restored: string }>(`/trash/boards/${id}/restore`, { method: "POST" });
+}
+export function restoreTask(id: string) {
+  return req<{ restored: string }>(`/trash/tasks/${id}/restore`, { method: "POST" });
+}
+export function purgeBoard(id: string) {
+  return req<void>(`/trash/boards/${id}`, { method: "DELETE" });
+}
+export function purgeTask(id: string) {
+  return req<void>(`/trash/tasks/${id}`, { method: "DELETE" });
 }

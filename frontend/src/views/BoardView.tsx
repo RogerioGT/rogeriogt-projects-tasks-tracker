@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { fetchBoardTree, fetchTasks, fetchStatuses, createTask, toggleComplete, updateTask, createBoard, updateBoard, moveBoard, deleteBoard, deleteTask, convertTaskToProject, Task, fetchBoards, Board, BoardTreeNode } from "../api";
+import { fetchBoardTree, fetchTasks, fetchStatuses, createTask, toggleComplete, updateTask, createBoard, updateBoard, moveBoard, convertBoardKind, deleteBoard, deleteTask, convertTaskToProject, Task, fetchBoards, Board, BoardTreeNode } from "../api";
 import { useI18n } from "../i18n";
 import ShareDialog from "../components/ShareDialog";
 
@@ -268,6 +268,10 @@ function Column({
     mutationFn: ({ parentId }: { parentId: string | null }) => moveBoard(board.id, { parent_id: parentId, position: null }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["boards"] }); setMoveOpen(false); },
   });
+  const convertKindMut = useMutation({
+    mutationFn: (kind: "section" | "company" | "project") => convertBoardKind(board.id, kind),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["boards"] }),
+  });
 
   const parentRef = useRef<HTMLDivElement>(null);
   const rowVirtualizer = useVirtualizer({
@@ -388,6 +392,15 @@ function Column({
             <button onClick={() => onAddBoard(board.id)} style={{ ...btnStyle, textAlign: "left" }}>{t("addProject")}</button>
             <button onClick={() => { setMenuOpen(false); setShareOpen(true); }} style={{ ...btnStyle, textAlign: "left" }}>{t("share")}</button>
             <button onClick={() => { setMenuOpen(false); setMoveOpen(true); }} style={{ ...btnStyle, textAlign: "left" }}>{t("move")}...</button>
+            {board.kind !== "company" && (
+              <button onClick={() => { if (confirm(t("convertBoardConfirm"))) convertKindMut.mutate("company"); }} style={{ ...btnStyle, textAlign: "left" }}>{t("convertTo")} → {t("company")}</button>
+            )}
+            {board.kind !== "project" && (
+              <button onClick={() => { if (confirm(t("convertBoardConfirm"))) convertKindMut.mutate("project"); }} style={{ ...btnStyle, textAlign: "left" }}>{t("convertTo")} → {t("project")}</button>
+            )}
+            {board.kind !== "section" && (
+              <button onClick={() => { if (confirm(t("convertBoardConfirm"))) convertKindMut.mutate("section"); }} style={{ ...btnStyle, textAlign: "left" }}>{t("convertTo")} → {t("section")}</button>
+            )}
             <button onClick={() => { if (confirm(t("deleteBoardWarning"))) deleteBoardMut.mutate(); }} style={{ ...btnStyle, color: "#ef4444", borderColor: "#ef444455" }}>{t("delete")}</button>
           </div>
         )}

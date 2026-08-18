@@ -272,6 +272,59 @@ def main():
         # board delete with task shares must succeed (FK cleanup)
         assert c.delete(f"/api/boards/{new_board_id}", headers=admin).status_code == 204
 
+        # ── Soft delete + trash + restore ──────────────────────────
+        # delete a project with tasks + a sub-board
+        r = c.post("/api/boards", json={"name": "To Trash", "kind": "project", "parent_id": company_id}, headers=admin)
+        trash_proj = r.json()["id"]
+        c.post("/api/tasks", json={"board_id": trash_proj, "title": "Will be trashed"}, headers=admin)
+        c.post("/api/boards", json={"name": "Sub of trash", "kind": "project", "parent_id": trash_proj}, headers=admin)
+        assert c.delete(f"/api/boards/{trash_proj}", headers=admin).status_code == 204
+        # gone from boards/tasks
+        ids = {b["id"] for b in c.get("/api/boards", headers=admin).json()}
+        assert trash_proj not in ids, "soft-deleted board must disappear from list"
+        task_ids = {t["id"] for t in c.get("/api/tasks", headers=admin).json()}
+        trashed_task = next(
+            t["id"] for t in c.get("/api/tasks", headers=admin).json()
+        ) if False else None
+        # trash lists it (admin)
+        trash_list = c.get("/api/trash", headers=admin).json()
+        trash_names = [b["name"] for b in trash_list["boards"]]
+        assert "To Trash" in trash_names, trash_names
+        assert "Sub of trash" not in trash_names, "children should not be listed separately"
+        # non-admin cannot see trash
+        assert c.get("/api/trash", headers=carol).status_code == 403
+        # restore
+        assert c.post(f"/api/trash/boards/{trash_proj}/restore", headers=admin).status_code == 200
+        ids = {b["id"] for b in c.get("/api/boards", headers=admin).json()}
+        assert trash_proj in ids, "restore must bring the board back"
+        sub = next(b["id"] for b in c.get("/api/boards", headers=admin).json() if b["name"] == "Sub of trash")
+        tasks_after = c.get(f"/api/tasks?board_id={sub}", headers=admin).json()
+        # task soft delete
+        r = c.post("/api/tasks", json={"board_id": trash_proj, "title": "Task to trash"}, headers=admin)
+        t_trash = r.json()["id"]
+        assert c.delete(f"/api/tasks/{t_trash}", headers=admin).status_code == 204
+        assert t_trash not in {t["id"] for t in c.get("/api/tasks", headers=admin).json()}
+        trash_list = c.get("/api/trash", headers=admin).json()
+        assert t_trash in [t["id"] for t in trash_list["tasks"]]
+        assert c.post(f"/api/trash/tasks/{t_trash}/restore", headers=admin).status_code == 200
+        assert t_trash in {t["id"] for t in c.get("/api/tasks", headers=admin).json()}
+
+        # ── Hierarchy kind conversion ──────────────────────────────
+        # convert a project to a company
+        r = c.post(f"/api/boards/{p3}/convert", json={"kind": "company"}, headers=admin)
+        assert r.status_code == 200 and r.json()["kind"] == "company"
+        # convert project to section -> moves to top level
+        r = c.post(f"/api/boards/{p2}/convert", json={"kind": "section"}, headers=admin)
+        assert r.status_code == 200 and r.json()["kind"] == "section"
+        assert r.json()["parent_id"] is None, "converting to section must move it to top level"
+        # section -> project stays put (top level)
+        r = c.post(f"/api/boards/{p2}/convert", json={"kind": "project"}, headers=admin)
+        assert r.status_code == 200 and r.json()["kind"] == "project"
+        # invalid kind
+        assert c.post(f"/api/boards/{p2}/convert", json={"kind": "nonsense"}, headers=admin).status_code == 400
+        # carol cannot convert
+        assert c.post(f"/api/boards/{p2}/convert", json={"kind": "company"}, headers=carol).status_code == 403
+
         print("ALL API TESTS PASS")
         print(f"  users: admin + bob + carol; team: {team_id}")
         print(f"  boards: company + project; tasks: secret + 2 batch; custom status flow verified")

@@ -3,6 +3,8 @@
 Enforces visibility (list/tree show only what the user can see) and edit
 permission (create/update/delete require edit access, inherited down the tree).
 """
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -11,7 +13,7 @@ from ..access import board_permission, visible_board_ids
 from ..db import get_db
 from ..deps import get_current_user
 from ..models import Board, BoardAcl, Event, Task, TaskAcl, User
-from ..schemas import BoardCreate, BoardMove, BoardOut, BoardUpdate
+from ..schemas import BoardCreate, BoardKindChange, BoardMove, BoardOut, BoardUpdate
 
 router = APIRouter(prefix="/api/boards", tags=["boards"])
 
@@ -36,7 +38,7 @@ def _log(db: Session, entity: str, eid: str, action: str, user_id=None, field=No
 
 @router.get("", response_model=list[BoardOut])
 def list_boards(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    q = select(Board)
+    q = select(Board).where(Board.deleted_at.is_(None))
     visible = visible_board_ids(db, user)
     if visible is not None:
         q = q.where(Board.id.in_(visible))
@@ -45,7 +47,9 @@ def list_boards(db: Session = Depends(get_db), user: User = Depends(get_current_
 
 @router.get("/tree")
 def board_tree(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    boards = db.scalars(select(Board).order_by(Board.sort_order, Board.name)).all()
+    boards = db.scalars(
+        select(Board).where(Board.deleted_at.is_(None)).order_by(Board.sort_order, Board.name)
+    ).all()
     visible = visible_board_ids(db, user)
     if visible is not None:
         boards = [b for b in boards if b.id in visible]
@@ -150,7 +154,7 @@ def move_board(board_id: str, payload: BoardMove, db: Session = Depends(get_db),
     - edit permission on the board AND the target parent (or top level)
     """
     board = db.get(Board, board_id)
-    if not board:
+    if not board or board.deleted_at is not None:
         raise HTTPException(404, "board not found")
     if board_permission(db, user, board_id) != "edit":
         raise HTTPException(403, "no edit permission on this board")
@@ -160,7 +164,7 @@ def move_board(board_id: str, payload: BoardMove, db: Session = Depends(get_db),
         raise HTTPException(400, "a board cannot be its own parent")
     if new_parent_id is not None:
         new_parent = db.get(Board, new_parent_id)
-        if not new_parent:
+        if not new_parent or new_parent.deleted_at is not None:
             raise HTTPException(404, "target board not found")
         if board_permission(db, user, new_parent_id) != "edit":
             raise HTTPException(403, "no edit permission on the target board")
@@ -206,23 +210,55 @@ def move_board(board_id: str, payload: BoardMove, db: Session = Depends(get_db),
 
 @router.delete("/{board_id}", status_code=204)
 def delete_board(board_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Soft delete: moves the board + entire subtree + their tasks to the Trash.
+    Restorable for 30 days via /api/trash."""
     board = db.get(Board, board_id)
-    if not board:
+    if not board or board.deleted_at is not None:
         raise HTTPException(404, "board not found")
     if board_permission(db, user, board_id) != "edit":
         raise HTTPException(403, "no edit permission on this board")
-    _log(db, "board", board_id, "delete", user_id=user.id)
-    # FK cleanup: task-level shares + board shares for the whole subtree
+    now = datetime.utcnow()
     subtree_ids = _board_ids_under(db, board_id)
-    for acl in db.scalars(select(TaskAcl).where(TaskAcl.task_id.in_(
-        select(Task.id).where(Task.board_id.in_(subtree_ids))
-    ))).all():
-        db.delete(acl)
-    for acl in db.scalars(select(BoardAcl).where(BoardAcl.board_id.in_(subtree_ids))).all():
-        db.delete(acl)
-    db.flush()
-    db.delete(board)  # cascade deletes children + tasks
+    for b in db.scalars(select(Board).where(Board.id.in_(subtree_ids))).all():
+        b.deleted_at = now
+    for t in db.scalars(select(Task).where(Task.board_id.in_(subtree_ids), Task.deleted_at.is_(None))).all():
+        t.deleted_at = now
+    _log(db, "board", board_id, "delete", user_id=user.id, new="trash")
     db.commit()
+
+
+@router.post("/{board_id}/convert", response_model=BoardOut)
+def convert_kind(board_id: str, payload: BoardKindChange, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Change a board's hierarchy level: project <-> company <-> section.
+
+    Rules:
+    - Converting to a section moves the board to the top level (sections are
+      the top-level bands). Tasks and sub-boards come along untouched.
+    - Converting a section to a company/project keeps it wherever it is.
+    """
+    board = db.get(Board, board_id)
+    if not board or board.deleted_at is not None:
+        raise HTTPException(404, "board not found")
+    if board_permission(db, user, board_id) != "edit":
+        raise HTTPException(403, "no edit permission on this board")
+    if payload.kind not in ("section", "company", "project"):
+        raise HTTPException(400, "kind must be section, company, or project")
+    if payload.kind == board.kind:
+        return board
+    old_kind = board.kind
+    if payload.kind == "section":
+        board.parent_id = None
+        # reindex top-level
+        roots = db.scalars(select(Board).where(Board.parent_id.is_(None), Board.deleted_at.is_(None)).order_by(Board.sort_order)).all()
+        for i, r in enumerate(roots):
+            if r.id != board.id:
+                r.sort_order = i
+        board.sort_order = len(roots)
+    board.kind = payload.kind
+    _log(db, "board", board_id, "convert", user_id=user.id, field="kind", old=old_kind, new=payload.kind)
+    db.commit()
+    db.refresh(board)
+    return board
 
 
 def _auto_color() -> str:

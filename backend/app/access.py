@@ -43,14 +43,16 @@ def full_access_board_ids(db: Session, user: User) -> set[str] | None:
         return None
 
     ids: set[str] = set()
-    ids.update(db.scalars(select(Board.id).where(Board.created_by == user.id)).all())
+    ids.update(db.scalars(select(Board.id).where(Board.created_by == user.id, Board.deleted_at.is_(None))).all())
     ids.update(db.scalars(select(BoardAcl.board_id).where(BoardAcl.user_id == user.id)).all())
     teams = _team_ids(db, user.id)
     if teams:
         ids.update(db.scalars(select(BoardAcl.board_id).where(BoardAcl.team_id.in_(teams))).all())
     frontier = list(ids)
     while frontier:
-        children = db.scalars(select(Board.id).where(Board.parent_id.in_(frontier))).all()
+        children = db.scalars(
+            select(Board.id).where(Board.parent_id.in_(frontier), Board.deleted_at.is_(None))
+        ).all()
         new = [c for c in children if c not in ids]
         if not new:
             break
@@ -68,12 +70,14 @@ def chain_board_ids(db: Session, user: User) -> set[str]:
     shared_task_board_ids = db.scalars(
         select(Task.board_id)
         .join(TaskAcl, TaskAcl.task_id == Task.id)
-        .where(_task_acl_cond(user, teams))
+        .where(_task_acl_cond(user, teams), Task.deleted_at.is_(None))
     ).all()
     chain: set[str] = set()
     for board_id in set(shared_task_board_ids):
         node = db.get(Board, board_id)
         while node is not None:
+            if node.deleted_at is not None:
+                break  # don't reveal chains through soft-deleted boards
             chain.add(node.id)
             node = node.parent
     return chain
@@ -101,10 +105,16 @@ def visible_task_ids(db: Session, user: User) -> set[str] | None:
     ids: set[str] = set()
     boards = full_access_board_ids(db, user)
     if boards:
-        ids.update(db.scalars(select(Task.id).where(Task.board_id.in_(boards))).all())
+        ids.update(
+            db.scalars(
+                select(Task.id).where(Task.board_id.in_(boards), Task.deleted_at.is_(None))
+            ).all()
+        )
     teams = _team_ids(db, user.id)
     ids.update(
-        db.scalars(select(TaskAcl.task_id).where(_task_acl_cond(user, teams))).all()
+        db.scalars(
+            select(TaskAcl.task_id).where(_task_acl_cond(user, teams))
+        ).all()
     )
     return ids
 

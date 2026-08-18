@@ -1,6 +1,6 @@
 # Rogerio's Projects & Tasks Tracker — Build Plan
 
-> **Status:** v1.1 — v1.0 + task→project conversion, sub-tasks, sorting in all views.
+> **Status:** v1.2 — v1.1 + drag-and-drop boards, history with user names, delete warnings, mobile view.
 > **Author:** Hermes (vibecoding profile) with Rogerio.
 > **Coding engine:** Hermes direct (backend) + React/TS frontend. MCP SDK v2.
 

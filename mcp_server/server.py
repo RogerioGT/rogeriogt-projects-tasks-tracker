@@ -450,14 +450,21 @@ def update_status(status_id: str, name: str | None = None, color: str | None = N
 # ---------------------------------------------------------------------------
 
 @mcp.tool(description="Move or reorder a board in the hierarchy (drag-and-drop equivalent).")
-def move_board(board: str, parent: str | None = None, position: int | None = None) -> dict:
-    """board and parent accept names or ids. parent=None moves to top level.
+def move_board(board: str, parent: str | None = None, position: int | None = None, to_top_level: bool = False) -> dict:
+    """board and parent accept names or ids.
+    - parent given: move under that parent.
+    - to_top_level=True: move to the top level (sections).
+    - neither: REORDER in place (keep the board's current parent), used with position.
     position = index among siblings (0 = first). Reindexes siblings."""
     b = _resolve_board(board)
-    payload: dict = {"parent_id": None, "position": position}
     if parent:
         p = _resolve_board(parent)
-        payload["parent_id"] = p["id"]
+        payload = {"parent_id": p["id"], "position": position}
+    elif to_top_level:
+        payload = {"parent_id": None, "position": position}
+    else:
+        # reorder among current siblings
+        payload = {"parent_id": b.get("parent_id"), "position": position}
     return _post(f"/api/boards/{b['id']}/move", payload)
 
 

@@ -15,9 +15,9 @@ class BoardCreate(BaseModel):
 
 
 class BoardUpdate(BaseModel):
+    """Field edits. Hierarchy changes are NOT allowed here: use
+    /boards/{id}/move (parent) and /boards/{id}/convert (kind)."""
     name: str | None = None
-    parent_id: str | None = None
-    kind: str | None = None
     color: str | None = None
     sort_order: int | None = None
 
@@ -66,7 +66,8 @@ class TaskUpdate(BaseModel):
     due_date: date | None = None
     tags: list[str] | None = None
     position: int | None = None
-    board_id: str | None = None
+    # board_id is deliberately NOT here: moving tasks must go through
+    # /tasks/{id}/move which checks permissions on the target board.
 
 
 class TaskOut(BaseModel):

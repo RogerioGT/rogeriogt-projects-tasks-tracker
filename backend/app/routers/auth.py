@@ -88,8 +88,13 @@ def me(user: User = Depends(get_current_user)):
 
 
 @router.get("/users", response_model=list[UserOut])
-def list_users(db: Session = Depends(get_db)):
-    return db.scalars(select(User).order_by(User.name, User.email)).all()
+def list_users(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Users list. Admins see everyone (incl. deactivated); regular users only
+    see active accounts (the share dialog needs the list)."""
+    q = select(User)
+    if not user.is_admin:
+        q = q.where(User.is_active.is_(True))
+    return db.scalars(q.order_by(User.name, User.email)).all()
 
 
 @router.post("/users", response_model=UserOut, status_code=201)

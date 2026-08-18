@@ -6,7 +6,7 @@ permission (create/update/delete require edit access, inherited down the tree).
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from ..access import board_permission, visible_board_ids
@@ -106,15 +106,17 @@ def board_tree(db: Session = Depends(get_db), user: User = Depends(get_current_u
 def create_board(payload: BoardCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if payload.parent_id:
         parent = db.get(Board, payload.parent_id)
-        if not parent:
+        if not parent or parent.deleted_at is not None:
             raise HTTPException(404, "parent board not found")
         if board_permission(db, user, parent.id) != "edit":
             raise HTTPException(403, "no edit permission on parent board")
+    if payload.kind not in ("section", "company", "project"):
+        raise HTTPException(400, "kind must be section, company, or project")
     board = Board(
         name=payload.name,
         parent_id=payload.parent_id,
         kind=payload.kind,
-        color=payload.color or _auto_color(),
+        color=payload.color or _auto_color(db),
         sort_order=payload.sort_order,
         created_by=user.id,
     )
@@ -129,14 +131,12 @@ def create_board(payload: BoardCreate, db: Session = Depends(get_db), user: User
 @router.patch("/{board_id}", response_model=BoardOut)
 def update_board(board_id: str, payload: BoardUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     board = db.get(Board, board_id)
-    if not board:
+    if not board or board.deleted_at is not None:
         raise HTTPException(404, "board not found")
     if board_permission(db, user, board_id) != "edit":
         raise HTTPException(403, "no edit permission on this board")
     data = payload.model_dump(exclude_unset=True)
     for k, v in data.items():
-        if k == "parent_id" and v == board.id:
-            raise HTTPException(400, "a board cannot be its own parent")
         setattr(board, k, v)
     _log(db, "board", board_id, "update", user_id=user.id)
     db.commit()
@@ -180,20 +180,27 @@ def move_board(board_id: str, payload: BoardMove, db: Session = Depends(get_db),
     db.flush()
 
     # reindex siblings of the NEW parent (and old parent when different)
+    # — only live boards, so trashed boards don't grab sort_order slots
     for pid in ({new_parent_id, old_parent} - {None}):
-        siblings = db.scalars(select(Board).where(Board.parent_id == pid).order_by(Board.sort_order, Board.name)).all()
+        siblings = db.scalars(
+            select(Board).where(Board.parent_id == pid, Board.deleted_at.is_(None))
+            .order_by(Board.sort_order, Board.name)
+        ).all()
         for i, sib in enumerate(siblings):
             sib.sort_order = i
     # top-level boards too
     if new_parent_id is None or old_parent is None:
-        roots = db.scalars(select(Board).where(Board.parent_id.is_(None)).order_by(Board.sort_order, Board.name)).all()
+        roots = db.scalars(
+            select(Board).where(Board.parent_id.is_(None), Board.deleted_at.is_(None))
+            .order_by(Board.sort_order, Board.name)
+        ).all()
         for i, r in enumerate(roots):
             r.sort_order = i
     # finally, put the moved board at the requested position
     if payload.position is not None:
         siblings = db.scalars(
             select(Board)
-            .where(Board.parent_id == new_parent_id)
+            .where(Board.parent_id == new_parent_id, Board.deleted_at.is_(None))
             .order_by(Board.sort_order)
         ).all()
         siblings = [s for s in siblings if s.id != board_id]
@@ -261,9 +268,15 @@ def convert_kind(board_id: str, payload: BoardKindChange, db: Session = Depends(
     return board
 
 
-def _auto_color() -> str:
+def _auto_color(db: Session) -> str:
+    """Pick the least-used color from the palette so auto-colored boards vary."""
     palette = [
         "#3b82f6", "#f97316", "#22c55e", "#a855f7", "#ef4444",
         "#14b8a6", "#eab308", "#ec4899", "#06b6d4", "#8b5cf6",
     ]
-    return palette[0]
+    counts: dict[str, int] = {}
+    for color, cnt in db.execute(
+        select(Board.color, func.count(Board.id)).group_by(Board.color)
+    ).all():
+        counts[color] = cnt
+    return min(palette, key=lambda c: counts.get(c, 0))

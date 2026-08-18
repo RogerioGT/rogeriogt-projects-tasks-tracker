@@ -2,11 +2,17 @@
 
 Board sharing inherits down the tree (share a company -> its projects/tasks
 are shared). Task sharing is standalone: share one task or a batch of tasks.
+
+Permissions:
+- list ACLs:    must be able to view the entity (board/task)
+- share:        must have edit permission on the entity
+- unshare:      must have edit permission on the entity
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..access import board_permission, task_permission
 from ..db import get_db
 from ..deps import get_current_user
 from ..models import Board, BoardAcl, Event, Task, TaskAcl, Team, User
@@ -32,12 +38,33 @@ def _target_desc(user_id: str | None, team_id: str | None) -> str:
     return f"user:{user_id}" if user_id else f"team:{team_id}"
 
 
+def _require_edit_board(db: Session, actor: User, board_id: str) -> Board:
+    board = db.get(Board, board_id)
+    if not board or board.deleted_at is not None:
+        raise HTTPException(404, "board not found")
+    if board_permission(db, actor, board_id) != "edit":
+        raise HTTPException(403, "no edit permission on this board")
+    return board
+
+
+def _require_edit_task(db: Session, actor: User, task_id: str) -> Task:
+    task = db.get(Task, task_id)
+    if not task or task.deleted_at is not None:
+        raise HTTPException(404, "task not found")
+    if task_permission(db, actor, task_id) != "edit":
+        raise HTTPException(403, "no edit permission on this task")
+    return task
+
+
 # ── Board ACL ──────────────────────────────────────────────────────────────
 
 @router.get("/boards/{board_id}/acl", response_model=list[ShareOut])
 def list_acl(board_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    if not db.get(Board, board_id):
+    board = db.get(Board, board_id)
+    if not board or board.deleted_at is not None:
         raise HTTPException(404, "board not found")
+    if board_permission(db, user, board_id) is None:
+        raise HTTPException(403, "no access to this board")
     return db.scalars(select(BoardAcl).where(BoardAcl.board_id == board_id)).all()
 
 
@@ -48,9 +75,7 @@ def share_board(
     db: Session = Depends(get_db),
     actor: User = Depends(get_current_user),
 ):
-    board = db.get(Board, board_id)
-    if not board:
-        raise HTTPException(404, "board not found")
+    board = _require_edit_board(db, actor, board_id)
     _validate_target(db, payload.user_id, payload.team_id)
     if payload.permission not in ("view", "edit"):
         raise HTTPException(400, "permission must be view or edit")
@@ -78,7 +103,8 @@ def share_board(
 
 
 @router.delete("/boards/{board_id}/acl/{acl_id}", status_code=204)
-def unshare_board(board_id: str, acl_id: str, db: Session = Depends(get_db)):
+def unshare_board(board_id: str, acl_id: str, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    _require_edit_board(db, actor, board_id)
     acl = db.scalars(
         select(BoardAcl).where(BoardAcl.board_id == board_id, BoardAcl.id == acl_id)
     ).first()
@@ -91,9 +117,12 @@ def unshare_board(board_id: str, acl_id: str, db: Session = Depends(get_db)):
 # ── Task ACL ───────────────────────────────────────────────────────────────
 
 @router.get("/tasks/{task_id}/acl", response_model=list[TaskShareOut])
-def list_task_acl(task_id: str, db: Session = Depends(get_db)):
-    if not db.get(Task, task_id):
+def list_task_acl(task_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    task = db.get(Task, task_id)
+    if not task or task.deleted_at is not None:
         raise HTTPException(404, "task not found")
+    if task_permission(db, user, task_id) is None:
+        raise HTTPException(403, "no access to this task")
     return db.scalars(select(TaskAcl).where(TaskAcl.task_id == task_id)).all()
 
 
@@ -104,8 +133,7 @@ def share_task(
     db: Session = Depends(get_db),
     actor: User = Depends(get_current_user),
 ):
-    if not db.get(Task, task_id):
-        raise HTTPException(404, "task not found")
+    _require_edit_task(db, actor, task_id)
     _validate_target(db, payload.user_id, payload.team_id)
     if payload.permission not in ("view", "edit"):
         raise HTTPException(400, "permission must be view or edit")
@@ -133,7 +161,8 @@ def share_task(
 
 
 @router.delete("/tasks/{task_id}/acl/{acl_id}", status_code=204)
-def unshare_task(task_id: str, acl_id: str, db: Session = Depends(get_db)):
+def unshare_task(task_id: str, acl_id: str, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    _require_edit_task(db, actor, task_id)
     acl = db.scalars(
         select(TaskAcl).where(TaskAcl.task_id == task_id, TaskAcl.id == acl_id)
     ).first()
@@ -156,8 +185,11 @@ def share_tasks_batch(
     created = 0
     updated = 0
     for task_id in set(payload.task_ids):
-        if not db.get(Task, task_id):
+        task = db.get(Task, task_id)
+        if not task or task.deleted_at is not None:
             continue
+        if task_permission(db, actor, task_id) != "edit":
+            raise HTTPException(403, f"no edit permission on task {task_id}")
         existing = db.scalars(
             select(TaskAcl).where(
                 TaskAcl.task_id == task_id,

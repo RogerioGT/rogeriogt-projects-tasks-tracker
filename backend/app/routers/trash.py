@@ -137,15 +137,32 @@ def purge_task(task_id: str, db: Session = Depends(get_db)):
 
 
 def purge_expired() -> int:
-    """Permanently delete trashed items older than TRASH_DAYS. Called on startup."""
+    """Permanently delete trashed items older than TRASH_DAYS. Called on startup.
+
+    Only top-of-subtree boards are purged individually: an expired child whose
+    parent is also expired gets cascade-deleted with the parent, so purging it
+    again would 404 and crash the startup loop.
+    """
     cutoff = datetime.utcnow() - timedelta(days=TRASH_DAYS)
     removed = 0
     db = SessionLocal()
     try:
-        for b in db.scalars(select(Board).where(Board.deleted_at.is_not(None), Board.deleted_at < cutoff)).all():
+        expired_boards = db.scalars(
+            select(Board).where(Board.deleted_at.is_not(None), Board.deleted_at < cutoff)
+        ).all()
+        expired_ids = {b.id for b in expired_boards}
+        # only purge boards whose parent is not also expired (they die via cascade)
+        tops = [b for b in expired_boards if b.parent_id not in expired_ids]
+        for b in tops:
             purge_board(b.id, db)
             removed += 1
-        for t in db.scalars(select(Task).where(Task.deleted_at.is_not(None), Task.deleted_at < cutoff)).all():
+        # tasks whose board was cascade-purged above are already gone; purge the rest
+        for t in db.scalars(
+            select(Task).where(Task.deleted_at.is_not(None), Task.deleted_at < cutoff)
+        ).all():
+            board = db.get(Board, t.board_id) if t.board_id else None
+            if board is not None and board.deleted_at is not None and board.deleted_at < cutoff:
+                continue  # will be / was handled by its board's subtree purge
             purge_task(t.id, db)
             removed += 1
     finally:

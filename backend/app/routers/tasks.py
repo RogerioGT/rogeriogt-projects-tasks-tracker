@@ -99,12 +99,14 @@ def list_tasks(
 @router.post("", response_model=TaskOut, status_code=201)
 def create_task(payload: TaskCreate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     board = db.get(Board, payload.board_id)
-    if not board:
+    if not board or board.deleted_at is not None:
         raise HTTPException(404, "board not found")
     if board_permission(db, user, payload.board_id) != "edit":
         raise HTTPException(403, "no edit permission on this board")
-    # new tasks go on top: shift existing tasks in this board down by one
-    existing = db.scalars(select(Task).where(Task.board_id == payload.board_id)).all()
+    # new tasks go on top: shift existing LIVE tasks in this board down by one
+    existing = db.scalars(
+        select(Task).where(Task.board_id == payload.board_id, Task.deleted_at.is_(None))
+    ).all()
     for t in existing:
         t.position += 1
     task = Task(
@@ -130,7 +132,7 @@ def create_task(payload: TaskCreate, db: Session = Depends(get_db), user: User =
 @router.patch("/{task_id}", response_model=TaskOut)
 def update_task(task_id: str, payload: TaskUpdate, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     task = db.get(Task, task_id)
-    if not task:
+    if not task or task.deleted_at is not None:
         raise HTTPException(404, "task not found")
     if task_permission(db, user, task_id) != "edit":
         raise HTTPException(403, "no edit permission on this task")
@@ -151,7 +153,7 @@ def update_task(task_id: str, payload: TaskUpdate, db: Session = Depends(get_db)
 @router.post("/{task_id}/complete", response_model=TaskOut)
 def toggle_complete(task_id: str, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     task = db.get(Task, task_id)
-    if not task:
+    if not task or task.deleted_at is not None:
         raise HTTPException(404, "task not found")
     if task_permission(db, user, task_id) != "edit":
         raise HTTPException(403, "no edit permission on this task")
@@ -172,9 +174,10 @@ def toggle_complete(task_id: str, db: Session = Depends(get_db), user: User = De
 @router.post("/{task_id}/move", response_model=TaskOut)
 def move_task(task_id: str, payload: TaskMove, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     task = db.get(Task, task_id)
-    if not task:
+    if not task or task.deleted_at is not None:
         raise HTTPException(404, "task not found")
-    if not db.get(Board, payload.board_id):
+    target = db.get(Board, payload.board_id)
+    if not target or target.deleted_at is not None:
         raise HTTPException(404, "board not found")
     if task_permission(db, user, task_id) != "edit":
         raise HTTPException(403, "no edit permission on this task")
@@ -197,12 +200,12 @@ def convert_to_project(task_id: str, db: Session = Depends(get_db), user: User =
     The task becomes the first task of the new project; more sub-tasks can be
     added to it like any other board."""
     task = db.get(Task, task_id)
-    if not task:
+    if not task or task.deleted_at is not None:
         raise HTTPException(404, "task not found")
     if task_permission(db, user, task_id) != "edit":
         raise HTTPException(403, "no edit permission on this task")
     parent = db.get(Board, task.board_id)
-    if not parent:
+    if not parent or parent.deleted_at is not None:
         raise HTTPException(404, "parent board not found")
     if board_permission(db, user, parent.id) != "edit":
         raise HTTPException(403, "no edit permission on the task's board")

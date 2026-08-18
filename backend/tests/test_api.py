@@ -328,6 +328,87 @@ def main():
         # carol cannot convert
         assert c.post(f"/api/boards/{p2}/convert", json={"kind": "company"}, headers=carol).status_code == 403
 
+        # ── Security: sharing requires permission ──────────────────
+        # reactivate bob (deactivated earlier in the flow)
+        assert c.patch(f"/api/auth/users/{bob_id}", json={"is_active": True}, headers=admin).status_code == 200
+        bob = {"Authorization": f"Bearer {c.post('/api/auth/login', json={'email': 'bob@x.com', 'password': 'newpass456'}).json()['token']}"}
+        # bob has no access to p2 (top-level, unshared) -> cannot list/share/unshare
+        assert c.get(f"/api/boards/{p2}/acl", headers=bob).status_code == 403
+        assert c.post(f"/api/boards/{p2}/acl", json={"user_id": carol_id, "permission": "edit"}, headers=bob).status_code == 403
+        # view-only user (carol on company) cannot share either
+        assert c.post(f"/api/boards/{project_id}/acl", json={"user_id": bob_id, "permission": "edit"}, headers=carol).status_code == 403
+        # unshare requires edit too
+        acl = c.post(f"/api/boards/{project_id}/acl", json={"user_id": bob_id, "permission": "edit"}, headers=admin).json()
+        assert c.delete(f"/api/boards/{project_id}/acl/{acl['id']}", headers=carol).status_code == 403
+        assert c.delete(f"/api/boards/{project_id}/acl/{acl['id']}", headers=admin).status_code == 204
+        # task sharing permission checks: bob has no access to tasks in p2
+        p2_task = c.post("/api/tasks", json={"board_id": p2, "title": "P2 secret"}, headers=admin).json()["id"]
+        assert c.post(f"/api/tasks/{p2_task}/acl", json={"user_id": carol_id}, headers=bob).status_code == 403
+        assert c.get(f"/api/tasks/{p2_task}/acl", headers=bob).status_code == 403
+        # admin can share it
+        assert c.post(f"/api/tasks/{p2_task}/acl", json={"user_id": carol_id, "permission": "view"}, headers=admin).status_code == 201
+
+        # ── Security: user list requires auth ───────────────────────
+        assert c.get("/api/auth/users").status_code == 401
+        assert c.get("/api/auth/users", headers=bob).status_code == 200
+
+        # ── Logic: PATCH cannot move boards or tasks ─────────────────
+        # parent_id in board PATCH is ignored (field removed from schema)
+        r = c.patch(f"/api/boards/{p2}", json={"parent_id": p3}, headers=admin)
+        assert r.status_code == 200 and r.json()["parent_id"] is None, "parent_id must not change via PATCH"
+        # board_id in task PATCH is ignored
+        r = c.patch(f"/api/tasks/{task_id}", json={"board_id": p3, "title": "still here"}, headers=admin)
+        assert r.status_code == 200 and r.json()["board_id"] == project_id, "board_id must not change via PATCH"
+
+        # ── Logic: trashed entities are untouchable ─────────────────
+        c.post("/api/tasks", json={"board_id": trash_proj, "title": "Ghost"}, headers=admin)
+        ghost = next(t for t in c.get("/api/tasks", headers=admin).json() if t["title"] == "Ghost" and t["board_id"] == trash_proj)
+        assert c.delete(f"/api/boards/{trash_proj}", headers=admin).status_code == 204
+        # cannot create a task in a trashed board
+        assert c.post("/api/tasks", json={"board_id": trash_proj, "title": "No"}, headers=admin).status_code == 404
+        # cannot create a board under a trashed parent
+        assert c.post("/api/boards", json={"name": "No", "kind": "project", "parent_id": trash_proj}, headers=admin).status_code == 404
+        # trashed task cannot be updated/moved/completed/converted
+        assert c.patch(f"/api/tasks/{ghost['id']}", json={"title": "hack"}, headers=admin).status_code == 404
+        assert c.post(f"/api/tasks/{ghost['id']}/complete", headers=admin).status_code == 404
+        assert c.post(f"/api/tasks/{ghost['id']}/move", json={"board_id": project_id}, headers=admin).status_code == 404
+        assert c.post(f"/api/tasks/{ghost['id']}/convert", headers=admin).status_code == 404
+        # trashed board cannot be renamed/moved
+        assert c.patch(f"/api/boards/{trash_proj}", json={"name": "hack"}, headers=admin).status_code == 404
+        assert c.post(f"/api/boards/{trash_proj}/move", json={"parent_id": None, "position": 0}, headers=admin).status_code == 404
+        # restore
+        assert c.post(f"/api/trash/boards/{trash_proj}/restore", headers=admin).status_code == 200
+
+        # ── Logic: purge_expired handles parent+child both expired ──
+        # simulate: parent and child both trashed with an old deleted_at
+        from app.db import SessionLocal
+        from app.models import Board as BoardModel, Task as TaskModel
+        from datetime import datetime, timedelta
+        from app.routers.trash import purge_expired
+        sdb = SessionLocal()
+        try:
+            old = datetime.utcnow() - timedelta(days=40)
+            for bid in (trash_proj, sub):
+                b = sdb.get(BoardModel, bid)
+                if b:
+                    b.deleted_at = old
+            for t in sdb.query(TaskModel).filter(TaskModel.board_id == trash_proj).all():
+                t.deleted_at = old
+            sdb.commit()
+            removed = purge_expired()
+            assert removed >= 1, "purge_expired must not crash on parent+child"
+            assert sdb.get(BoardModel, trash_proj) is None, "expired parent purged"
+            assert sdb.get(BoardModel, sub) is None, "expired child purged via cascade"
+        finally:
+            sdb.close()
+
+        # ── Logic: auto color varies ────────────────────────────────
+        r1 = c.post("/api/boards", json={"name": "Auto A", "kind": "project"}, headers=admin)
+        r2 = c.post("/api/boards", json={"name": "Auto B", "kind": "project"}, headers=admin)
+        assert r1.json()["color"] != r2.json()["color"], "auto colors should differ"
+        c.delete(f"/api/boards/{r1.json()['id']}", headers=admin)
+        c.delete(f"/api/boards/{r2.json()['id']}", headers=admin)
+
         print("ALL API TESTS PASS")
         print(f"  users: admin + bob + carol; team: {team_id}")
         print(f"  boards: company + project; tasks: secret + 2 batch; custom status flow verified")

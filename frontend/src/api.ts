@@ -145,7 +145,7 @@ export function fetchBoardTree() {
 export function createBoard(payload: { name: string; parent_id?: string | null; kind: string; color?: string; sort_order?: number }) {
   return req<Board>("/boards", { method: "POST", body: JSON.stringify(payload) });
 }
-export function updateBoard(id: string, payload: Partial<{ name: string; parent_id: string | null; kind: string; color: string; sort_order: number }>) {
+export function updateBoard(id: string, payload: Partial<{ name: string; color: string; sort_order: number }>) {
   return req<Board>(`/boards/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 export function moveBoard(id: string, payload: { parent_id: string | null; position: number | null }) {
@@ -186,7 +186,7 @@ export function createTask(payload: { board_id: string; title: string; descripti
   return req<Task>("/tasks", { method: "POST", body: JSON.stringify(payload) });
 }
 
-export function updateTask(id: string, payload: Partial<{ title: string; description: string | null; status: string; priority: string; assignee: string | null; due_date: string | null; tags: string[] | null; position: number; board_id: string }>) {
+export function updateTask(id: string, payload: Partial<{ title: string; description: string | null; status: string; priority: string; assignee: string | null; due_date: string | null; tags: string[] | null; position: number }>) {
   return req<Task>(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 

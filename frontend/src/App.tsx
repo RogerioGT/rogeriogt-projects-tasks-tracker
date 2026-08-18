@@ -11,7 +11,6 @@ import DashboardView from "./views/DashboardView";
 import HistoryView from "./views/HistoryView";
 import AccountDialog from "./components/AccountDialog";
 import AdminPanel from "./components/AdminPanel";
-import WorkspaceSwitcher from "./components/WorkspaceSwitcher";
 
 type ViewKey = "board" | "kanban" | "list" | "compact" | "dashboard" | "history";
 
@@ -206,7 +205,6 @@ function TopBar({
         >
           {user ? (user.name || user.email.split("@")[0]) : t("login")}
         </button>
-        <WorkspaceSwitcher />
         {accountOpen && (
           <div
             style={{

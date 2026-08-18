@@ -1,6 +1,6 @@
 # Rogerio's Projects & Tasks Tracker — Build Plan
 
-> **Status:** v0.9 — multi-user + sharing + auth shipped, LIVE at tasksmgr.rogeriogt.com.
+> **Status:** v1.0 — teams, granular sharing, auth, filters, custom statuses, MCP admin tools. LIVE at tasksmgr.rogeriogt.com.
 > **Author:** Hermes (vibecoding profile) with Rogerio.
 > **Coding engine:** Hermes direct (backend) + React/TS frontend. MCP SDK v2.
 

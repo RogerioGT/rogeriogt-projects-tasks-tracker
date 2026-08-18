@@ -63,6 +63,22 @@ const dict: Dict = {
   allBoards: { en: "All boards", es: "Todos los tableros" },
   showCompleted: { en: "Show completed", es: "Mostrar completadas" },
   hideCompleted: { en: "Hide completed", es: "Ocultar completadas" },
+
+  account: { en: "Account", es: "Cuenta" },
+  login: { en: "Log in", es: "Iniciar sesion" },
+  register: { en: "Register", es: "Registrarse" },
+  logout: { en: "Log out", es: "Cerrar sesion" },
+  email: { en: "Email", es: "Correo" },
+  password: { en: "Password", es: "Contrasena" },
+  name: { en: "Name", es: "Nombre" },
+  noAccount: { en: "No account? Register", es: "Sin cuenta? Registrate" },
+  haveAccount: { en: "Have an account? Log in", es: "Tienes cuenta? Inicia sesion" },
+  share: { en: "Share", es: "Compartir" },
+  sharedWith: { en: "Shared with", es: "Compartido con" },
+  selectUser: { en: "Select user", es: "Seleccionar usuario" },
+  edit: { en: "Edit", es: "Editar" },
+  view: { en: "View", es: "Ver" },
+  close: { en: "Close", es: "Cerrar" },
 };
 
 export type TKey = keyof typeof dict;

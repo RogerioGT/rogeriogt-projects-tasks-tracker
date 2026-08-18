@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { fetchBoardTree, fetchTasks, createTask, toggleComplete, updateTask, createBoard, updateBoard, deleteBoard, deleteTask, Task, fetchBoards, BoardTreeNode } from "../api";
 import { useI18n } from "../i18n";
+import ShareDialog from "../components/ShareDialog";
 
 const priorityColor: Record<string, string> = {
   high: "#ef4444",
@@ -189,6 +190,7 @@ function Column({
   const [newTitle, setNewTitle] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [editName, setEditName] = useState(board.name);
   const [editColor, setEditColor] = useState(board.color);
 
@@ -280,6 +282,7 @@ function Column({
               <button onClick={() => setMenuOpen(false)} style={{ ...btnStyle, flex: 1 }}>{t("cancel")}</button>
             </div>
             <button onClick={() => onAddBoard(board.id)} style={{ ...btnStyle, textAlign: "left" }}>{t("addProject")}</button>
+            <button onClick={() => { setMenuOpen(false); setShareOpen(true); }} style={{ ...btnStyle, textAlign: "left" }}>{t("share")}</button>
             <button onClick={() => { if (confirm("Delete board and its tasks?")) deleteBoardMut.mutate(); }} style={{ ...btnStyle, color: "#ef4444", borderColor: "#ef444455" }}>{t("delete")}</button>
           </div>
         )}
@@ -329,6 +332,12 @@ function Column({
             </div>
           )}
         </>
+      )}
+
+      {shareOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setShareOpen(false)}>
+          <ShareDialog boardId={board.id} boardName={board.name} onClose={() => setShareOpen(false)} />
+        </div>
       )}
     </div>
   );

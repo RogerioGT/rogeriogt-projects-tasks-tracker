@@ -74,6 +74,23 @@ export type Event = {
   created_at: string;
 };
 
+export type User = {
+  id: string;
+  email: string;
+  name: string;
+  locale: string;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type Share = {
+  id: string;
+  board_id: string;
+  user_id: string;
+  permission: "view" | "edit";
+  created_at: string;
+};
+
 /* Boards */
 export function fetchBoards() {
   return req<Board[]>("/boards");
@@ -147,4 +164,53 @@ export function fetchEvents(params: { entity_type?: string; action?: string; lim
   if (params.limit) q.set("limit", String(params.limit));
   const qs = q.toString();
   return req<Event[]>(`/events${qs ? `?${qs}` : ""}`);
+}
+
+/* Auth */
+const TOKEN_KEY = "tasks_tracker_token";
+
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+export function setToken(token: string | null) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export function register(payload: { email: string; name?: string; password: string }) {
+  return req<{ token: string; user: User }>("/auth/register", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+export function login(payload: { email: string; password: string }) {
+  return req<{ token: string; user: User }>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+export function fetchMe() {
+  return req<User>("/auth/me", { headers: authHeaders() });
+}
+export function fetchUsers() {
+  return req<User[]>("/auth/users");
+}
+
+/* Sharing */
+export function fetchAcl(boardId: string) {
+  return req<Share[]>(`/boards/${boardId}/acl`);
+}
+export function shareBoard(boardId: string, payload: { user_id: string; permission: "view" | "edit" }) {
+  return req<Share>(`/boards/${boardId}/acl`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: authHeaders(),
+  });
+}
+export function unshareBoard(boardId: string, userId: string) {
+  return req<void>(`/boards/${boardId}/acl/${userId}`, { method: "DELETE" });
 }

@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider, useI18n } from "./i18n";
+import { AuthProvider, useAuth } from "./auth";
 import BoardView from "./views/BoardView";
 import KanbanView from "./views/KanbanView";
 import ListView from "./views/ListView";
 import CompactView from "./views/CompactView";
 import DashboardView from "./views/DashboardView";
 import HistoryView from "./views/HistoryView";
+import AccountDialog from "./components/AccountDialog";
 
 type ViewKey = "board" | "kanban" | "list" | "compact" | "dashboard" | "history";
 
@@ -26,6 +28,8 @@ function TopBar({
   setSearch: (s: string) => void;
 }) {
   const { t, locale, setLocale } = useI18n();
+  const { user } = useAuth();
+  const [accountOpen, setAccountOpen] = useState(false);
   const [density, setDensity] = useState<"compact" | "cozy">(
     () => (localStorage.getItem("density") as "compact" | "cozy") || "compact",
   );
@@ -159,6 +163,28 @@ function TopBar({
         >
           {theme === "dark" ? "Dark" : "Light"}
         </button>
+
+        <button
+          onClick={() => setAccountOpen(!accountOpen)}
+          title={t("account")}
+          style={{
+            fontSize: 11,
+            padding: "3px 8px",
+            border: "1px solid var(--border)",
+            borderRadius: 4,
+            background: "var(--bg-elevated)",
+            color: "var(--text)",
+            cursor: "pointer",
+            position: "relative",
+          }}
+        >
+          {user ? (user.name || user.email.split("@")[0]) : t("login")}
+        </button>
+        {accountOpen && (
+          <div style={{ position: "absolute", top: 40, right: 10, zIndex: 60 }} onClick={() => setAccountOpen(false)}>
+            <AccountDialog onClose={() => setAccountOpen(false)} />
+          </div>
+        )}
       </div>
     </header>
   );
@@ -187,7 +213,9 @@ export default function App() {
   return (
     <QueryClientProvider client={qc}>
       <I18nProvider>
-        <AppInner />
+        <AuthProvider>
+          <AppInner />
+        </AuthProvider>
       </I18nProvider>
     </QueryClientProvider>
   );

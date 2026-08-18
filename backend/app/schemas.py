@@ -91,3 +91,45 @@ class EventOut(BaseModel):
     old_value: str | None
     new_value: str | None
     created_at: datetime
+
+
+# --- Auth / Users ---
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    email: str
+    name: str
+    locale: str
+    is_active: bool
+    created_at: datetime
+
+
+class RegisterIn(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+    name: str = Field("", max_length=120)
+    password: str = Field(..., min_length=4, max_length=128)
+
+
+class LoginIn(BaseModel):
+    email: str
+    password: str
+
+
+class AuthResponse(BaseModel):
+    token: str
+    user: UserOut
+
+
+# --- Sharing ---
+class ShareIn(BaseModel):
+    user_id: str
+    permission: str = "edit"  # view | edit
+
+
+class ShareOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    board_id: str
+    user_id: str
+    permission: str
+    created_at: datetime

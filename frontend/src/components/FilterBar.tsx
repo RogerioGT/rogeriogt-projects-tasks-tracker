@@ -145,7 +145,9 @@ export default function FilterBar({
 export function filtersToQuery(filters: Filters) {
   const params: { board_id?: string; include_descendants?: boolean; status?: string; priority?: string; assignee?: string; sort?: string } = {};
   if (filters.project) {
+    // include descendants so sub-projects under the selected project are included too
     params.board_id = filters.project;
+    params.include_descendants = true;
   } else if (filters.company) {
     params.board_id = filters.company;
     params.include_descendants = true;

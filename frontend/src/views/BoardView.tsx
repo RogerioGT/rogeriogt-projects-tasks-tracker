@@ -1,7 +1,7 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { fetchBoardTree, fetchTasks, fetchStatuses, createTask, toggleComplete, updateTask, createBoard, updateBoard, moveBoard, convertBoardKind, deleteBoard, deleteTask, convertTaskToProject, Task, fetchBoards, Board, BoardTreeNode } from "../api";
+import { fetchBoardTree, fetchTasks, fetchStatuses, createTask, toggleComplete, updateTask, createBoard, updateBoard, moveBoard, convertBoardKind, deleteBoard, deleteTask, convertTaskToProject, fetchAssignees, Task, fetchBoards, Board, BoardTreeNode } from "../api";
 import { useI18n } from "../i18n";
 import { useWorkspace } from "../workspace";
 import ShareDialog from "../components/ShareDialog";
@@ -39,6 +39,10 @@ function TaskRow({
 }) {
   const { t } = useI18n();
   const { data: statuses } = useQuery({ queryKey: ["statuses"], queryFn: fetchStatuses });
+  const { data: assignees } = useQuery({
+    queryKey: ["assignees", task.board_id],
+    queryFn: () => fetchAssignees(task.board_id),
+  });
   const [open, setOpen] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
   const [editDesc, setEditDesc] = useState(task.description || "");
@@ -51,6 +55,14 @@ function TaskRow({
   // status options: defined + the task's own
   const statusOptions = new Set<string>((statuses || []).map((s) => s.name));
   statusOptions.add(task.status);
+  // assignee options: shared users + the task's current assignee
+  const assigneeOptions = useMemo(() => {
+    const list = [...(assignees || [])];
+    if (editAssignee && !list.some((u) => u.name === editAssignee)) {
+      list.push({ id: "__current__", name: editAssignee, email: "", is_admin: false });
+    }
+    return list;
+  }, [assignees, editAssignee]);
 
   const save = () => {
     onUpdate({
@@ -150,7 +162,12 @@ function TaskRow({
             </select>
           </div>
           <div style={{ display: "flex", gap: 6 }}>
-            <input value={editAssignee} onChange={(e) => setEditAssignee(e.target.value)} placeholder={t("assignee")} style={inputStyle} />
+            <select value={editAssignee} onChange={(e) => setEditAssignee(e.target.value)} style={inputStyle}>
+              <option value="">{t("assigneeNone")}</option>
+              {assigneeOptions.map((u) => (
+                <option key={u.id} value={u.name}>{u.name || u.email}</option>
+              ))}
+            </select>
             <input type="date" value={editDue} onChange={(e) => setEditDue(e.target.value)} style={inputStyle} />
           </div>
           <input value={editTags} onChange={(e) => setEditTags(e.target.value)} placeholder={t("tags") + " (comma separated)"} style={inputStyle} />

@@ -1,11 +1,11 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchBoards, fetchStatuses, Board } from "../api";
+import { fetchBoardTree, fetchStatuses, BoardTreeNode } from "../api";
 import { useI18n } from "../i18n";
 
 export type Filters = {
-  company: string; // board id of a company, "" = all
-  project: string; // board id of a project, "" = all
+  company: string; // board id of a scope (section/company/any board with children), "" = all
+  project: string; // board id of a board inside the scope, "" = all in scope
   status: string;
   priority: string;
   assignee: string;
@@ -21,8 +21,32 @@ const selStyle: React.CSSProperties = {
   borderRadius: 4,
   background: "var(--bg-surface)",
   color: "var(--text)",
+  maxWidth: 200,
 };
 const inpStyle: React.CSSProperties = { ...selStyle, width: 130 };
+
+/** Flatten the board tree into a list with depth + parent chain, in display order. */
+function flattenTree(nodes: BoardTreeNode[], depth = 0): { node: BoardTreeNode; depth: number }[] {
+  const out: { node: BoardTreeNode; depth: number }[] = [];
+  for (const n of nodes) {
+    out.push({ node: n, depth });
+    out.push(...flattenTree(n.children, depth + 1));
+  }
+  return out;
+}
+
+/** Collect every board id in the subtree of `node` (any depth). */
+function collectIds(node: BoardTreeNode): string[] {
+  const ids: string[] = [];
+  const walk = (n: BoardTreeNode) => {
+    for (const c of n.children) {
+      ids.push(c.id);
+      walk(c);
+    }
+  };
+  walk(node);
+  return ids;
+}
 
 export default function FilterBar({
   filters,
@@ -34,26 +58,30 @@ export default function FilterBar({
   showBoardScope?: boolean;
 }) {
   const { t } = useI18n();
-  const { data: boards } = useQuery({ queryKey: ["boards", "flat"], queryFn: fetchBoards });
+  const { data: tree } = useQuery({ queryKey: ["boards", "tree"], queryFn: fetchBoardTree });
   const { data: statuses } = useQuery({ queryKey: ["statuses"], queryFn: fetchStatuses });
 
-  const { companies, projectsByCompany } = useMemo(() => {
-    const all = (boards || []) as Board[];
-    const companies = all.filter((b) => b.kind === "company");
-    const projectsByCompany = new Map<string, Board[]>();
-    for (const b of all) {
-      if (b.kind === "project" && b.parent_id) {
-        const list = projectsByCompany.get(b.parent_id) || [];
-        list.push(b);
-        projectsByCompany.set(b.parent_id, list);
-      }
-    }
-    return { companies, projectsByCompany };
-  }, [boards]);
+  const { scopes, projectsFor } = useMemo(() => {
+    const flat = flattenTree(tree || []);
+    // Scopes: sections, companies, and any board that contains sub-boards.
+    const scopes = flat.filter(({ node }) => node.kind === "section" || node.kind === "company" || node.children.length > 0);
+    const byId = new Map(flat.map(({ node }) => [node.id, node]));
+    const projectsFor = (scopeId: string) => {
+      const scope = byId.get(scopeId);
+      if (!scope) return [];
+      const ids = collectIds(scope);
+      return ids
+        .map((id) => byId.get(id))
+        .filter((n): n is BoardTreeNode => !!n)
+        .map((n) => ({ id: n.id, name: n.name, kind: n.kind }));
+    };
+    return { scopes, projectsFor };
+  }, [tree]);
 
-  const projects = filters.company ? projectsByCompany.get(filters.company) || [] : [];
+  const projects = filters.company ? projectsFor(filters.company) : [];
 
   const set = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
+  const indent = (d: number) => "\u00A0".repeat(d * 2);
 
   return (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
@@ -65,8 +93,8 @@ export default function FilterBar({
             style={selStyle}
           >
             <option value="">{t("company")}: {t("all")}</option>
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
+            {scopes.map(({ node, depth }) => (
+              <option key={node.id} value={node.id}>{indent(depth)}{node.name}</option>
             ))}
           </select>
           <select

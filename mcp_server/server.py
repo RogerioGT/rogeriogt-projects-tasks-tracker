@@ -168,6 +168,7 @@ def create_task(
     assignee: str | None = None,
     due_date: str | None = None,
     description: str | None = None,
+    tags: list[str] | None = None,
 ) -> dict:
     """board is a board name or id. due_date in YYYY-MM-DD format."""
     b = _resolve_board(board)
@@ -179,6 +180,7 @@ def create_task(
         "assignee": assignee,
         "due_date": due_date,
         "description": description,
+        "tags": tags,
     }
     return _post("/api/tasks", payload)
 
@@ -189,7 +191,7 @@ def toggle_complete(task_id: str) -> dict:
     return _post(f"/api/tasks/{task_id}/complete")
 
 
-@mcp.tool(description="Update any field of a task (title, status, priority, assignee, due date, description).")
+@mcp.tool(description="Update any field of a task (title, status, priority, assignee, due date, description, tags).")
 def update_task(
     task_id: str,
     title: str | None = None,
@@ -198,6 +200,7 @@ def update_task(
     assignee: str | None = None,
     due_date: str | None = None,
     description: str | None = None,
+    tags: list[str] | None = None,
 ) -> dict:
     """Only the fields you provide are changed. due_date in YYYY-MM-DD format."""
     payload = {}
@@ -213,6 +216,8 @@ def update_task(
         payload["due_date"] = due_date
     if description is not None:
         payload["description"] = description
+    if tags is not None:
+        payload["tags"] = tags
     if not payload:
         raise RuntimeError("No fields provided to update.")
     return _patch(f"/api/tasks/{task_id}", payload)
@@ -231,11 +236,11 @@ def convert_task_to_project(task_id: str) -> dict:
     return _post(f"/api/tasks/{task_id}/convert")
 
 
-@mcp.tool(description="Delete a task by id.")
+@mcp.tool(description="Delete a task by id (soft delete: goes to Trash, restorable 30 days).")
 def delete_task(task_id: str) -> dict:
-    """Permanently remove a task."""
+    """Moves the task to the Trash. Use restore_task to bring it back."""
     _delete(f"/api/tasks/{task_id}")
-    return {"deleted": task_id}
+    return {"deleted": task_id, "note": "soft-deleted; restorable for 30 days via restore_task"}
 
 
 @mcp.tool(description="Add a new section, company, or project board.")
@@ -308,12 +313,12 @@ def update_board(board: str, name: str | None = None, color: str | None = None) 
     return _patch(f"/api/boards/{b['id']}", payload)
 
 
-@mcp.tool(description="Delete a board and everything under it (projects, tasks).")
+@mcp.tool(description="Delete a board and everything under it (soft delete: Trash, restorable 30 days).")
 def delete_board(board: str) -> dict:
-    """board is a board name or id. Destructive; removes descendants."""
+    """board is a board name or id. Moves the subtree to the Trash."""
     b = _resolve_board(board)
     _delete(f"/api/boards/{b['id']}")
-    return {"deleted": b["id"], "name": b["name"]}
+    return {"deleted": b["id"], "name": b["name"], "note": "soft-deleted; restorable for 30 days via restore_board"}
 
 
 @mcp.tool(description="List all users (admin only in production mode).")
@@ -426,6 +431,138 @@ def add_status(name: str, color: str | None = None) -> dict:
 def delete_status(status_id: str) -> dict:
     _delete(f"/api/statuses/{status_id}")
     return {"deleted": status_id}
+
+
+@mcp.tool(description="Rename or recolor a custom workflow status (admin only).")
+def update_status(status_id: str, name: str | None = None, color: str | None = None) -> dict:
+    payload = {}
+    if name is not None:
+        payload["name"] = name
+    if color is not None:
+        payload["color"] = color
+    if not payload:
+        raise RuntimeError("Provide name and/or color.")
+    return _patch(f"/api/statuses/{status_id}", payload)
+
+
+# ---------------------------------------------------------------------------
+# v1.3+ — board move/convert, teams mgmt, trash, events, ACL listing
+# ---------------------------------------------------------------------------
+
+@mcp.tool(description="Move or reorder a board in the hierarchy (drag-and-drop equivalent).")
+def move_board(board: str, parent: str | None = None, position: int | None = None) -> dict:
+    """board and parent accept names or ids. parent=None moves to top level.
+    position = index among siblings (0 = first). Reindexes siblings."""
+    b = _resolve_board(board)
+    payload: dict = {"parent_id": None, "position": position}
+    if parent:
+        p = _resolve_board(parent)
+        payload["parent_id"] = p["id"]
+    return _post(f"/api/boards/{b['id']}/move", payload)
+
+
+@mcp.tool(description="Convert a board's hierarchy level: project <-> company <-> section.")
+def convert_board_kind(board: str, kind: str) -> dict:
+    """kind: section|company|project. Converting to section moves it to top level."""
+    b = _resolve_board(board)
+    if kind not in ("section", "company", "project"):
+        raise RuntimeError("kind must be section, company, or project")
+    return _post(f"/api/boards/{b['id']}/convert", {"kind": kind})
+
+
+@mcp.tool(description="List who a board is shared with (admin/users).")
+def list_board_shares(board: str) -> dict:
+    """board accepts a name or id. Returns ACL rows with user_id/team_id and permission."""
+    b = _resolve_board(board)
+    shares = _get(f"/api/boards/{b['id']}/acl")
+    return {"board": b["name"], "shares": shares}
+
+
+@mcp.tool(description="List who a task is shared with.")
+def list_task_shares(task_id: str) -> dict:
+    """Returns task ACL rows with user_id/team_id and permission."""
+    shares = _get(f"/api/tasks/{task_id}/acl")
+    return {"shares": shares}
+
+
+@mcp.tool(description="Remove a task share (by ACL id; get ids from list_task_shares).")
+def unshare_task(task_id: str, acl_id: str) -> dict:
+    _delete(f"/api/tasks/{task_id}/acl/{acl_id}")
+    return {"removed": acl_id}
+
+
+@mcp.tool(description="Rename a team (admin only).")
+def rename_team(team: str, name: str) -> dict:
+    team_obj = _resolve_team(team)
+    return _patch(f"/api/teams/{team_obj['id']}", {"name": name})
+
+
+@mcp.tool(description="Delete a team and its shares (admin only).")
+def delete_team(team: str) -> dict:
+    team_obj = _resolve_team(team)
+    _delete(f"/api/teams/{team_obj['id']}")
+    return {"deleted": team_obj["id"], "name": team_obj["name"]}
+
+
+@mcp.tool(description="Remove a user from a team (admin only).")
+def remove_team_member(team: str, user: str) -> dict:
+    team_obj = _resolve_team(team)
+    user_obj = _resolve_user(user)
+    _delete(f"/api/teams/{team_obj['id']}/members/{user_obj['id']}")
+    return {"removed": user_obj["id"]}
+
+
+@mcp.tool(description="List the Trash: soft-deleted boards and tasks with days until purge.")
+def list_trash() -> dict:
+    data = _get("/api/trash")
+    return data if isinstance(data, dict) else {"trash": data}
+
+
+@mcp.tool(description="Restore a soft-deleted board + its whole subtree from the Trash.")
+def restore_board(board_id: str) -> dict:
+    return _post(f"/api/trash/boards/{board_id}/restore")
+
+
+@mcp.tool(description="Restore a soft-deleted task from the Trash.")
+def restore_task(task_id: str) -> dict:
+    return _post(f"/api/trash/tasks/{task_id}/restore")
+
+
+@mcp.tool(description="Permanently delete a trashed board (no restore after this).")
+def purge_board(board_id: str) -> dict:
+    _delete(f"/api/trash/boards/{board_id}")
+    return {"purged": board_id}
+
+
+@mcp.tool(description="Permanently delete a trashed task (no restore after this).")
+def purge_task(task_id: str) -> dict:
+    _delete(f"/api/trash/tasks/{task_id}")
+    return {"purged": task_id}
+
+
+@mcp.tool(description="List the change history (who did what, when).")
+def list_events(entity_type: str | None = None, action: str | None = None, limit: int = 100) -> dict:
+    """entity_type: task|board. action: create|update|complete|reopen|move|delete|convert|share|restore."""
+    params = {"limit": str(limit)}
+    if entity_type:
+        params["entity_type"] = entity_type
+    if action:
+        params["action"] = action
+    qs = "&".join(f"{k}={urllib.parse.quote(v)}" for k, v in params.items())
+    events = _get(f"/api/events?{qs}")
+    return {"events": events, "count": len(events) if isinstance(events, list) else 0}
+
+
+@mcp.tool(description="Who is the current user (the token's identity).")
+def whoami() -> dict:
+    data = _get("/api/auth/me")
+    return data if isinstance(data, dict) else {"user": data}
+
+
+@mcp.tool(description="Change the current user's password.")
+def change_password(current_password: str, new_password: str) -> dict:
+    _post("/api/auth/change-password", {"current_password": current_password, "new_password": new_password})
+    return {"changed": True}
 
 
 if __name__ == "__main__":

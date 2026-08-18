@@ -3,25 +3,18 @@
 Lets Hermes drive the task board from chat. Type "add task X to eyegenerate.com"
 and the MCP tools resolve the board name and create the task.
 
-## What it exposes (21 tools)
+## What it exposes (42 tools)
 
-| Tool | What it does |
-|------|--------------|
-| `list_boards` | Full hierarchy: sections -> companies -> projects |
-| `list_tasks` | Filter by board/status/priority/assignee/search |
-| `create_task` | New task (board can be a name or id) |
-| `toggle_complete` | Done <-> not-started |
-| `update_task` | Change any field |
-| `move_task` | Move to another board |
-| `delete_task` | Delete |
-| `add_board` | New section / company / project |
-| `update_board` | Rename or recolor a board |
-| `delete_board` | Delete a board + everything under it |
-| `dashboard_stats` | Counts + completion rate |
-| `list_users` / `add_user` / `set_user_flags` | Admin user management |
-| `list_teams` / `add_team` / `add_team_member` | Admin team management |
-| `share_board` / `unshare_board` | Share a board subtree with a user or team |
-| `share_task` / `share_tasks` | Share one task or a batch with a user or team |
+| Area | Tools |
+|------|-------|
+| Boards | `list_boards`, `add_board`, `update_board`, `move_board`, `convert_board_kind`, `delete_board` |
+| Tasks | `list_tasks`, `create_task`, `update_task`, `toggle_complete`, `move_task`, `convert_task_to_project`, `delete_task` |
+| Sharing | `share_board`, `unshare_board`, `list_board_shares`, `share_task`, `unshare_task`, `share_tasks`, `list_task_shares` |
+| Teams | `list_teams`, `add_team`, `rename_team`, `add_team_member`, `remove_team_member`, `delete_team` |
+| Users | `list_users`, `add_user`, `set_user_flags`, `whoami`, `change_password` |
+| Statuses | `list_statuses`, `add_status`, `update_status`, `delete_status` |
+| Trash | `list_trash`, `restore_board`, `restore_task`, `purge_board`, `purge_task` |
+| Insights | `dashboard_stats`, `list_events` |
 
 ## How it works
 

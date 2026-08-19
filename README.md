@@ -79,7 +79,7 @@ Bilingual English/Spanish. Live at **[tasksmgr.rogeriogt.com](https://tasksmgr.r
 | Styling | CSS variables, inline styles (dense dark design system) |
 | Auth | PBKDF2-HMAC-SHA256 + HMAC tokens (Python stdlib only) |
 | Deploy | Single Docker container (multi-stage build) |
-| MCP | 42 tools via `mcp` SDK v2, stdlib urllib HTTP client |
+| MCP | 50 tools via `mcp` SDK v2, stdlib urllib HTTP client |
 
 SQLite specifics are contained in the connection string + pragmas, so the
 database can be swapped to Postgres later with one line.
@@ -110,7 +110,7 @@ frontend/
     views/             # Board, Kanban, List, Compact, Dashboard, History
     components/        # dialogs, filter bar, admin panel
 mcp_server/
-  server.py            # MCP server (42 tools)
+  server.py            # MCP server (50 tools)
   README.md            # MCP tool inventory
 docker-compose.yml         # local dev (port 8787, no auth)
 docker-compose.prod.yml    # production template (REQUIRE_AUTH=true)
@@ -203,23 +203,109 @@ only); Caddy reverse-proxies https://tasksmgr.rogeriogt.com to it.
 
 ## MCP server: drive the board from chat
 
-The MCP server exposes **50 tools** covering the entire API, so Hermes (or any
-MCP client) can drive the tracker from chat: "add task X to eyegenerate.com",
-"move 5bell.com under Personal Projects", "restore the deleted project", etc.
+The MCP server exposes **50 tools** covering the entire API, so any MCP client
+(Hermes, VS Code Copilot, Cline, Claude Desktop, etc.) can drive the tracker
+from chat: "add task X to eyegenerate.com", "move 5bell.com under Personal
+Projects", "restore the deleted project", "mark task Y completed", etc.
+
+The server is a **stdio** Python program: it talks to the backend REST API over
+HTTP. Two environment variables control it:
+
+| Variable | Purpose |
+|----------|---------|
+| `TASKS_API_URL` | Backend base URL (default `http://localhost:8787`) |
+| `TASKS_API_TOKEN` | Bearer token for `REQUIRE_AUTH=true` servers (from `POST /api/auth/login`). Omit for local dev (no auth). |
+
+The command is always the same; only the `env` changes per target:
 
 ```bash
-# Register with Hermes:
+/path/to/mcp_server/.venv/bin/python /path/to/mcp_server/server.py
+```
+
+(On this machine the venv lives at
+`~/Documents/rogeriogt-projects-tasks-tracker/mcp_server/.venv`.)
+
+### Step 0 — get an API token (required for the live server)
+
+```bash
+curl -s -X POST https://tasksmgr.rogeriogt.com/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"YOUR_EMAIL","password":"YOUR_PASSWORD"}'
+```
+
+The `token` field in the response is your bearer token. **Tokens expire after
+30 days**, so re-run this when a client starts returning auth errors. For local
+development (backend running on `localhost:8787`) no token is needed at all.
+
+### Step 1 — create a user for each person
+
+Admin creates users in the web app (⚙ Settings → People → add user) or via MCP
+`add_user`. Each person then logs in with their own email/password, gets their
+own API token (Step 0), and connects their own client. Share the boards/sections
+they should see (Share button on any board, or MCP `share_board`), and their
+assignee dropdown automatically lists the people they share with.
+
+### Connect to Hermes
+
+```bash
 hermes mcp add tasks_tracker \
   --command /path/to/mcp_server/.venv/bin/python \
   --args /path/to/mcp_server/server.py
 ```
 
-Environment variables for the MCP server:
+Set `TASKS_API_URL` and `TASKS_API_TOKEN` in the environment where Hermes runs
+for the live server (see `~/.hermes` env files), then verify with
+`hermes mcp test tasks_tracker`.
 
-| Variable | Purpose |
-|----------|---------|
-| `TASKS_API_URL` | Backend base URL (default `http://localhost:8787`) |
-| `TASKS_API_TOKEN` | Bearer token for `REQUIRE_AUTH=true` servers (login as admin first) |
+### Connect to VS Code (Copilot Chat)
+
+VS Code reads MCP servers from two places:
+
+1. **User-level (applies to every workspace):** `~/.config/Code/User/mcp.json`
+2. **Workspace-level (one repo):** `.vscode/mcp.json` in the repo root
+
+Add this entry (adjust the absolute paths to the machine):
+
+```json
+{
+  "servers": {
+    "tasks-tracker": {
+      "type": "stdio",
+      "command": "/home/leyo/Documents/rogeriogt-projects-tasks-tracker/mcp_server/.venv/bin/python",
+      "args": [
+        "/home/leyo/Documents/rogeriogt-projects-tasks-tracker/mcp_server/server.py"
+      ],
+      "env": {
+        "TASKS_API_URL": "https://tasksmgr.rogeriogt.com",
+        "TASKS_API_TOKEN": "${input:tasks_tracker_token}"
+      }
+    }
+  },
+  "inputs": [
+    {
+      "id": "tasks_tracker_token",
+      "type": "promptString",
+      "description": "Tasks Tracker API token (from POST /api/auth/login)",
+      "password": true
+    }
+  ]
+}
+```
+
+The `${input:tasks_tracker_token}` + `inputs` pair makes VS Code prompt for the
+token once (masked, stored securely) instead of hard-coding it. Alternatively
+paste the token straight into `TASKS_API_TOKEN` if you prefer. Then in VS Code:
+open Copilot Chat → Configure Tools → tick "tasks-tracker" → Start.
+
+A ready-to-copy template also lives in the repo at `.vscode/mcp.example.json`
+(the live `.vscode/mcp.json` is gitignored so tokens never leak to GitHub).
+
+### Connect to other clients (Cline, Claude Desktop, n8n, etc.)
+
+The same stdio command + env works everywhere. For a GUI that only asks for
+command/args/env: command = the venv python, args = `server.py` path, env =
+`TASKS_API_URL` + `TASKS_API_TOKEN`. For a system that runs the server as a
+child process, set both env vars before spawning it.
 
 Full tool inventory: see [mcp_server/README.md](mcp_server/README.md).
 

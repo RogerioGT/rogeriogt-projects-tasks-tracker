@@ -452,6 +452,19 @@ def main():
         boards_ws2 = c.get(f"/api/boards?workspace_id={ws2}", headers=admin).json()
         assert {b["name"] for b in boards_ws2} == {"WS2 sec", "WS2 proj"}
 
+        # ── Task + stats workspace isolation ────────────────────────
+        # a task in ws2 project must not leak into the main workspace task list
+        c.post("/api/tasks", json={"board_id": ws2_proj, "title": "criar camarones"}, headers=admin)
+        tasks_ws2 = c.get(f"/api/tasks?workspace_id={ws2}", headers=admin).json()
+        assert any(t["title"] == "criar camarones" for t in tasks_ws2)
+        tasks_main = c.get(f"/api/tasks?workspace_id={main_ws}", headers=admin).json()
+        assert all(t["title"] != "criar camarones" for t in tasks_main), "task must not leak across workspaces"
+        # stats scoped per workspace
+        s2 = c.get(f"/api/tasks/stats/summary?workspace_id={ws2}", headers=admin).json()
+        s1 = c.get(f"/api/tasks/stats/summary?workspace_id={main_ws}", headers=admin).json()
+        assert s2["total"] >= 1
+        assert s2["total"] != s1["total"], "stats must be workspace-scoped"
+
         # rename workspace
         assert c.patch(f"/api/workspaces/{ws2}", json={"name": "Board 2 v2"}, headers=admin).status_code == 200
 

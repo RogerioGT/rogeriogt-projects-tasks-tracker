@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from ..access import visible_board_ids, visible_task_ids
 from ..db import get_db
 from ..deps import get_current_user
-from ..models import Event, User
+from ..models import Board, Event, Task, User
 from ..schemas import EventOut
 
 router = APIRouter(prefix="/api/events", tags=["events"])
@@ -21,6 +21,7 @@ def list_events(
     entity_type: str | None = None,
     entity_id: str | None = None,
     action: str | None = None,
+    workspace_id: str | None = None,
     limit: int = Query(200, ge=1, le=1000),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -33,6 +34,14 @@ def list_events(
         q = q.where(
             ((Event.entity_type == "task") & Event.entity_id.in_(task_visible))
             | ((Event.entity_type == "board") & Event.entity_id.in_(board_visible))
+        )
+    if workspace_id:
+        # only events whose board/task lives in this main board
+        ws_board_ids = select(Board.id).where(Board.workspace_id == workspace_id)
+        ws_task_ids = select(Task.id).where(Task.board_id.in_(ws_board_ids))
+        q = q.where(
+            ((Event.entity_type == "board") & Event.entity_id.in_(ws_board_ids))
+            | ((Event.entity_type == "task") & Event.entity_id.in_(ws_task_ids))
         )
     if entity_type:
         q = q.where(Event.entity_type == entity_type)

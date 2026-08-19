@@ -2,19 +2,21 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchTasks, fetchStatuses, updateTask, Task } from "../api";
 import { useI18n } from "../i18n";
+import { useWorkspace } from "../workspace";
 import FilterBar, { EMPTY_FILTERS, Filters, filtersToQuery } from "../components/FilterBar";
 import TaskEditDialog from "../components/TaskEditDialog";
 
 export default function KanbanView({ search }: { search: string }) {
   const { t } = useI18n();
   const qc = useQueryClient();
+  const { currentId: wsId } = useWorkspace();
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   const { data: statuses } = useQuery({ queryKey: ["statuses"], queryFn: fetchStatuses });
   const { data: tasks } = useQuery({
-    queryKey: ["tasks", "kanban", filters, search],
-    queryFn: () => fetchTasks({ ...filtersToQuery(filters), search: search || undefined }),
+    queryKey: ["tasks", "kanban", filters, search, wsId],
+    queryFn: () => fetchTasks({ ...filtersToQuery(filters), workspace_id: wsId || undefined, search: search || undefined }),
   });
 
   const updateMut = useMutation({

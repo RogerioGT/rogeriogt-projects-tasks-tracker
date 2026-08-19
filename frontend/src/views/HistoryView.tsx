@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchEvents, fetchBoards, Event, Board } from "../api";
 import { useI18n } from "../i18n";
+import { useWorkspace } from "../workspace";
 
 const ACTION_LABEL: Record<string, string> = {
   create: "Created",
@@ -36,13 +37,14 @@ function timeAgo(iso: string): string {
 
 export default function HistoryView() {
   const { t } = useI18n();
+  const { currentId: wsId } = useWorkspace();
   const [filter, setFilter] = useState<"all" | "task" | "board">("all");
 
   const { data: events, isLoading } = useQuery({
-    queryKey: ["events", filter],
-    queryFn: () => fetchEvents({ entity_type: filter === "all" ? undefined : filter, limit: 500 }),
+    queryKey: ["events", filter, wsId],
+    queryFn: () => fetchEvents({ entity_type: filter === "all" ? undefined : filter, workspace_id: wsId || undefined, limit: 500 }),
   });
-  const { data: boards } = useQuery({ queryKey: ["boards"], queryFn: () => fetchBoards() });
+  const { data: boards } = useQuery({ queryKey: ["boards", wsId], queryFn: () => fetchBoards(wsId || undefined) });
 
   const boardName = useMemo(() => {
     const m = new Map<string, string>();

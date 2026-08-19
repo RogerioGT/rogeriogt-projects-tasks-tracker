@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { createColumnHelper, flexRender, getCoreRowModel, getSortedRowModel, SortingState, useReactTable } from "@tanstack/react-table";
 import { fetchBoards, fetchTasks, toggleComplete, Task } from "../api";
 import { useI18n } from "../i18n";
+import { useWorkspace } from "../workspace";
 import FilterBar, { EMPTY_FILTERS, Filters, filtersToQuery } from "../components/FilterBar";
 import TaskEditDialog from "../components/TaskEditDialog";
 
@@ -11,11 +12,12 @@ const priorityColor: Record<string, string> = { high: "#ef4444", medium: "#f9731
 export default function ListView({ search }: { search: string }) {
   const { t } = useI18n();
   const qc = useQueryClient();
+  const { currentId: wsId } = useWorkspace();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
 
-  const { data: boards } = useQuery({ queryKey: ["boards", "flat"], queryFn: () => fetchBoards() });
+  const { data: boards } = useQuery({ queryKey: ["boards", "flat", wsId], queryFn: () => fetchBoards(wsId || undefined) });
   const boardName = useMemo(() => {
     const m = new Map<string, string>();
     (boards || []).forEach((b) => m.set(b.id, b.name));
@@ -23,10 +25,11 @@ export default function ListView({ search }: { search: string }) {
   }, [boards]);
 
   const { data: tasks } = useQuery({
-    queryKey: ["tasks", "list", search, filters],
+    queryKey: ["tasks", "list", search, filters, wsId],
     queryFn: () =>
       fetchTasks({
         ...filtersToQuery(filters),
+        workspace_id: wsId || undefined,
         search: search || undefined,
       }),
   });

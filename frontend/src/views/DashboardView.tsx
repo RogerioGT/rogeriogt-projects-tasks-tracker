@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchBoardTree, fetchStats, fetchTasks, BoardTreeNode } from "../api";
 import { useI18n } from "../i18n";
+import { useWorkspace } from "../workspace";
 
 function Bar({ label, value, total, color }: { label: string; value: number; total: number; color: string }) {
   const pct = total ? (value / total) * 100 : 0;
@@ -29,9 +30,10 @@ function SectionBars({ sections, tasksPerSection }: { sections: BoardTreeNode[];
 
 export default function DashboardView() {
   const { t } = useI18n();
-  const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: fetchStats });
-  const { data: tree } = useQuery({ queryKey: ["boards", "tree"], queryFn: () => fetchBoardTree() });
-  const { data: tasks } = useQuery({ queryKey: ["tasks", "all"], queryFn: () => fetchTasks({ sort: "position" }) });
+  const { currentId: wsId } = useWorkspace();
+  const { data: stats } = useQuery({ queryKey: ["stats", wsId], queryFn: () => fetchStats(wsId || undefined) });
+  const { data: tree } = useQuery({ queryKey: ["boards", "tree", wsId], queryFn: () => fetchBoardTree(wsId || undefined) });
+  const { data: tasks } = useQuery({ queryKey: ["tasks", "all", wsId], queryFn: () => fetchTasks({ sort: "position", workspace_id: wsId || undefined }) });
 
   // per-section counts: for each top-level section, count tasks whose board is in its subtree
   const tasksPerSection = (() => {

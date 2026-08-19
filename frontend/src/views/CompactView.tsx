@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchBoards, fetchTasks, createTask, toggleComplete, Task } from "../api";
 import { useI18n } from "../i18n";
+import { useWorkspace } from "../workspace";
 import FilterBar, { EMPTY_FILTERS, Filters, filtersToQuery } from "../components/FilterBar";
 import TaskEditDialog from "../components/TaskEditDialog";
 
@@ -10,13 +11,14 @@ const priorityDot: Record<string, string> = { high: "#ef4444", medium: "#f97316"
 export default function CompactView({ search }: { search: string }) {
   const { t } = useI18n();
   const qc = useQueryClient();
-  const { data: boards } = useQuery({ queryKey: ["boards", "flat"], queryFn: () => fetchBoards() });
+  const { currentId: wsId } = useWorkspace();
+  const { data: boards } = useQuery({ queryKey: ["boards", "flat", wsId], queryFn: () => fetchBoards(wsId || undefined) });
   const boardName = new Map((boards || []).map((b) => [b.id, b.name]));
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
 
   const { data: tasks } = useQuery({
-    queryKey: ["tasks", "compact", search, filters],
-    queryFn: () => fetchTasks({ ...filtersToQuery(filters), search: search || undefined }),
+    queryKey: ["tasks", "compact", search, filters, wsId],
+    queryFn: () => fetchTasks({ ...filtersToQuery(filters), workspace_id: wsId || undefined, search: search || undefined }),
   });
 
   const [title, setTitle] = useState("");

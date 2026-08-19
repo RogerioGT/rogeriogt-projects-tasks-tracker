@@ -306,6 +306,45 @@ function Column({
     setNewTitle("");
   };
 
+  const renderTasks = (compact = false) => (
+    <>
+      <div
+        ref={parentRef}
+        style={compact
+          ? { maxHeight: 160, overflow: "auto", padding: 6, display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }
+          : { flex: 1, overflow: "auto", padding: 6, display: "flex", flexDirection: "column", gap: 4 }}
+      >
+        {active.length === 0 ? (
+          <div style={{ fontSize: 11, color: "var(--text-faint)", textAlign: "center", padding: 12 }}>{t("noTasks")}</div>
+        ) : active.length > 12 ? (
+          <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
+            {rowVirtualizer.getVirtualItems().map((vi) => {
+              const task = active[vi.index];
+              return (
+                <div key={task.id} style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vi.start}px)`, paddingBottom: 4 }}>
+                  <TaskRow task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} canEdit={canEdit} />
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          active.map((task) => (
+            <TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} canEdit={canEdit} />
+          ))
+        )}
+      </div>
+
+      {done.length > 0 && (
+        <div style={{ borderTop: "1px solid var(--border)", background: "var(--bg)", padding: "4px 6px", flexShrink: 0 }}>
+          <button onClick={() => setShowCompleted(!showCompleted)} style={{ fontSize: 10, color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer", width: "100%", textAlign: "left", padding: "2px 0" }}>
+            {showCompleted ? "▾" : "▸"} {t("completed")} ({done.length})
+          </button>
+          {showCompleted && <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4, opacity: 0.75 }}>{done.map((task) => (<TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} canEdit={canEdit} />))}</div>}
+        </div>
+      )}
+    </>
+  );
+
   const isNestedParent = board.children.length > 0;
   const isDragOver = dropTarget?.boardId === board.id;
   const dropBefore = dropTarget?.before ?? false;
@@ -432,44 +471,18 @@ function Column({
       )}
 
       {isNestedParent ? (
-        <div style={{ flex: 1, overflow: "auto", padding: 6, display: "flex", flexDirection: "column", gap: 8 }}>
-          {board.children.map((child) => (
-            <Column key={child.id} board={child} tasksAll={tasksAll} depth={depth + 1} onAddBoard={onAddBoard} allBoards={allBoards} draggedId={draggedId} dropTarget={dropTarget} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragOverBoard={onDragOverBoard} onDropBoard={onDropBoard} onDropSection={onDropSection} />
-          ))}
-          {board.children.length === 0 && <div style={{ fontSize: 11, color: "var(--text-faint)", textAlign: "center", padding: 8 }}>{t("noTasks")}</div>}
+        <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column" }}>
+          {renderTasks(true)}
+          <div style={{ padding: 6, display: "flex", flexDirection: "column", gap: 8, borderTop: "1px solid var(--border)" }}>
+            {board.children.map((child) => (
+              <Column key={child.id} board={child} tasksAll={tasksAll} depth={depth + 1} onAddBoard={onAddBoard} allBoards={allBoards} draggedId={draggedId} dropTarget={dropTarget} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragOverBoard={onDragOverBoard} onDropBoard={onDropBoard} onDropSection={onDropSection} />
+            ))}
+          </div>
         </div>
       ) : (
-        <>
-          <div ref={parentRef} style={{ flex: 1, overflow: "auto", padding: 6, display: "flex", flexDirection: "column", gap: 4 }}>
-            {active.length === 0 ? (
-              <div style={{ fontSize: 11, color: "var(--text-faint)", textAlign: "center", padding: 12 }}>{t("noTasks")}</div>
-            ) : active.length > 12 ? (
-              <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
-                {rowVirtualizer.getVirtualItems().map((vi) => {
-                  const task = active[vi.index];
-                  return (
-                    <div key={task.id} style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vi.start}px)`, paddingBottom: 4 }}>
-                      <TaskRow task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} canEdit={canEdit} />
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              active.map((task) => (
-                <TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} canEdit={canEdit} />
-              ))
-            )}
-          </div>
-
-          {done.length > 0 && (
-            <div style={{ borderTop: "1px solid var(--border)", background: "var(--bg)", padding: "4px 6px" }}>
-              <button onClick={() => setShowCompleted(!showCompleted)} style={{ fontSize: 10, color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer", width: "100%", textAlign: "left", padding: "2px 0" }}>
-                {showCompleted ? "▾" : "▸"} {t("completed")} ({done.length})
-              </button>
-              {showCompleted && <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4, opacity: 0.75 }}>{done.map((task) => (<TaskRow key={task.id} task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} canEdit={canEdit} />))}</div>}
-            </div>
-          )}
-        </>
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          {renderTasks(false)}
+        </div>
       )}
 
       {shareOpen && (

@@ -41,6 +41,7 @@ def _board_ids_under(db: Session, board_id: str) -> list[str]:
 @router.get("", response_model=list[TaskOut])
 def list_tasks(
     board_id: str | None = None,
+    workspace_id: str | None = None,
     include_descendants: bool = False,
     status: str | None = None,
     priority: str | None = None,
@@ -56,6 +57,10 @@ def list_tasks(
     visible = visible_task_ids(db, user)
     if visible is not None:
         q = q.where(Task.id.in_(visible))
+    if workspace_id:
+        # only tasks on boards belonging to this main board
+        board_ids = select(Board.id).where(Board.workspace_id == workspace_id, Board.deleted_at.is_(None))
+        q = q.where(Task.board_id.in_(board_ids))
     if board_id:
         if include_descendants:
             q = q.where(Task.board_id.in_(_board_ids_under(db, board_id)))
@@ -247,11 +252,14 @@ def delete_task(task_id: str, db: Session = Depends(get_db), user: User = Depend
 
 
 @router.get("/stats/summary")
-def stats(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+def stats(workspace_id: str | None = None, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     q = select(func.count(Task.id)).where(Task.deleted_at.is_(None))
     visible = visible_task_ids(db, user)
     if visible is not None:
         q = q.where(Task.id.in_(visible))
+    if workspace_id:
+        board_ids = select(Board.id).where(Board.workspace_id == workspace_id, Board.deleted_at.is_(None))
+        q = q.where(Task.board_id.in_(board_ids))
     total = db.scalar(q) or 0
     done = db.scalar(q.where(Task.status == "done")) or 0
     waiting = db.scalar(q.where(Task.status == "waiting")) or 0

@@ -203,6 +203,7 @@ export function deleteBoard(id: string) {
 /* Tasks */
 export type TaskListParams = {
   board_id?: string;
+  workspace_id?: string;
   include_descendants?: boolean;
   status?: string;
   priority?: string;
@@ -214,6 +215,7 @@ export type TaskListParams = {
 export function fetchTasks(params: TaskListParams = {}) {
   const q = new URLSearchParams();
   if (params.board_id) q.set("board_id", params.board_id);
+  if (params.workspace_id) q.set("workspace_id", params.workspace_id);
   if (params.include_descendants) q.set("include_descendants", "true");
   if (params.status) q.set("status", params.status);
   if (params.priority) q.set("priority", params.priority);
@@ -248,15 +250,17 @@ export function deleteTask(id: string) {
   return req<void>(`/tasks/${id}`, { method: "DELETE" });
 }
 
-export function fetchStats() {
-  return req<StatsSummary>("/tasks/stats/summary");
+export function fetchStats(workspaceId?: string) {
+  const qs = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : "";
+  return req<StatsSummary>(`/tasks/stats/summary${qs}`);
 }
 
 /* Events */
-export function fetchEvents(params: { entity_type?: string; action?: string; limit?: number } = {}) {
+export function fetchEvents(params: { entity_type?: string; action?: string; workspace_id?: string; limit?: number } = {}) {
   const q = new URLSearchParams();
   if (params.entity_type) q.set("entity_type", params.entity_type);
   if (params.action) q.set("action", params.action);
+  if (params.workspace_id) q.set("workspace_id", params.workspace_id);
   if (params.limit) q.set("limit", String(params.limit));
   const qs = q.toString();
   return req<Event[]>(`/events${qs ? `?${qs}` : ""}`);

@@ -300,6 +300,23 @@ open Copilot Chat → Configure Tools → tick "tasks-tracker" → Start.
 A ready-to-copy template also lives in the repo at `.vscode/mcp.example.json`
 (the live `.vscode/mcp.json` is gitignored so tokens never leak to GitHub).
 
+### Auto-refresh the token (cron)
+
+Tokens expire after 30 days. A daily cron job refreshes them automatically:
+
+- Script: `scripts/refresh-mcp-token.py` (also copied to `~/.hermes/scripts/`).
+- It decodes the token's embedded expiry from the `mcp.json` files; if more than
+  7 days remain it stays silent and exits. Otherwise it logs in
+  (`TASKS_TRACKER_ADMIN_EMAIL` / `TASKS_TRACKER_ADMIN_PASSWORD` from the profile
+  `.env`), verifies the new token, and rewrites it in place in every target file
+  (VS Code user-level `~/.config/Code/User/mcp.json` + repo `.vscode/mcp.json`).
+- Hermes cron: job `tasks-tracker MCP token refresh`, schedule `0 9 * * *`,
+  `no_agent` mode (pure script, no tokens).
+- Run manually: `python3 scripts/refresh-mcp-token.py --force`.
+- After a refresh, restart the tasks-tracker server in VS Code (it reads the
+  token at spawn time) — VS Code normally prompts "reload" when `mcp.json`
+  changes on disk.
+
 ### Connect to other clients (Cline, Claude Desktop, n8n, etc.)
 
 The same stdio command + env works everywhere. For a GUI that only asks for

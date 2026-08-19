@@ -300,22 +300,47 @@ open Copilot Chat → Configure Tools → tick "tasks-tracker" → Start.
 A ready-to-copy template also lives in the repo at `.vscode/mcp.example.json`
 (the live `.vscode/mcp.json` is gitignored so tokens never leak to GitHub).
 
+### Connect to Hermes (this machine or any profile)
+
+The MCP is registered in Hermes as `tasks_tracker` (stdio) with the token in its
+`env` block, so **any Hermes session or profile** can drive the board:
+
+```yaml
+# ~/.hermes/profiles/<name>/config.yaml
+mcp_servers:
+  tasks_tracker:
+    command: /home/leyo/Documents/rogeriogt-projects-tasks-tracker/mcp_server/.venv/bin/python
+    args:
+      - /home/leyo/Documents/rogeriogt-projects-tasks-tracker/mcp_server/server.py
+    env:
+      TASKS_API_URL: https://tasksmgr.rogeriogt.com
+      TASKS_API_TOKEN: <token>
+    enabled: true
+```
+
+Then `hermes mcp test tasks_tracker` should show 50 tools. Add the same block to
+any other profile's `config.yaml` to give that profile access too.
+
+Hermes also has a **skill for using** the tracker (`tasks-tracker-mcp`) — it
+teaches the agent to resolve board ids, add tasks, mark complete, etc., so a
+plain request like "add a task to eyegenerate.com" just works.
+
 ### Auto-refresh the token (cron)
 
 Tokens expire after 30 days. A daily cron job refreshes them automatically:
 
 - Script: `scripts/refresh-mcp-token.py` (also copied to `~/.hermes/scripts/`).
-- It decodes the token's embedded expiry from the `mcp.json` files; if more than
+- It decodes the token's embedded expiry from the config files; if more than
   7 days remain it stays silent and exits. Otherwise it logs in
   (`TASKS_TRACKER_ADMIN_EMAIL` / `TASKS_TRACKER_ADMIN_PASSWORD` from the profile
-  `.env`), verifies the new token, and rewrites it in place in every target file
-  (VS Code user-level `~/.config/Code/User/mcp.json` + repo `.vscode/mcp.json`).
+  `.env`), verifies the new token, and rewrites it in place in **every** target:
+  VS Code user-level `~/.config/Code/User/mcp.json`, repo `.vscode/mcp.json`,
+  and Hermes `~/.hermes/profiles/<name>/config.yaml`.
 - Hermes cron: job `tasks-tracker MCP token refresh`, schedule `0 9 * * *`,
   `no_agent` mode (pure script, no tokens).
 - Run manually: `python3 scripts/refresh-mcp-token.py --force`.
-- After a refresh, restart the tasks-tracker server in VS Code (it reads the
-  token at spawn time) — VS Code normally prompts "reload" when `mcp.json`
-  changes on disk.
+- After a refresh: restart the tasks-tracker server in VS Code (it reads the
+  token at spawn time), and in Hermes run `/reload-mcp` or start a new session.
 
 ### Connect to other clients (Cline, Claude Desktop, n8n, etc.)
 

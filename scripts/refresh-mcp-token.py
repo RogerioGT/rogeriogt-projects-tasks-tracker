@@ -32,9 +32,14 @@ TARGETS = [
     os.path.expanduser("~/Documents/rogeriogt-projects-tasks-tracker/.vscode/mcp.json"),
 ]
 
+# Hermes config.yaml — the MCP server's env block uses YAML (unquoted) values.
+HERMES_CONFIG = os.path.expanduser("~/.hermes/profiles/vibecoding/config.yaml")
+
 # Matches `"TASKS_API_TOKEN": "<anything>"` on one line, so it rewrites both a
 # hardcoded token and a `${input:...}` placeholder, preserving all other content.
 TOKEN_RE = re.compile(r'("TASKS_API_TOKEN"\s*:\s*)"[^"]*"')
+# YAML form: `TASKS_API_TOKEN: <value>` (may be quoted or not).
+TOKEN_RE_YAML = re.compile(r'(\n\s+TASKS_API_TOKEN:\s*)\S+')
 
 
 def load_creds() -> tuple[str, str]:
@@ -69,7 +74,7 @@ def token_expiry(token: str) -> int:
 
 
 def read_token(path: str) -> str | None:
-    """Extract the TASKS_API_TOKEN value from a file, or None if not present."""
+    """Extract the TASKS_API_TOKEN value from a JSON mcp.json, or None."""
     try:
         text = open(path).read()
     except FileNotFoundError:
@@ -79,6 +84,18 @@ def read_token(path: str) -> str | None:
         return None
     val = m.group(1)
     return None if val.startswith("${input") else val
+
+
+def read_token_yaml(path: str) -> str | None:
+    """Extract the TASKS_API_TOKEN value from the Hermes config.yaml, or None."""
+    try:
+        text = open(path).read()
+    except FileNotFoundError:
+        return None
+    m = re.search(r'\n\s+TASKS_API_TOKEN:\s*["\']?([^"\'\s]+)', text)
+    if not m:
+        return None
+    return m.group(1)
 
 
 def login(email: str, password: str) -> str:
@@ -116,6 +133,18 @@ def rewrite_token(path: str, new_token: str) -> bool:
     return True
 
 
+def rewrite_token_yaml(path: str, new_token: str) -> bool:
+    if not os.path.exists(path):
+        return False
+    text = open(path).read()
+    new_text, n = TOKEN_RE_YAML.subn(f'\\1{new_token}', text)
+    if n == 0:
+        return False
+    with open(path, "w") as f:
+        f.write(new_text)
+    return True
+
+
 def main() -> int:
     force = "--force" in sys.argv
 
@@ -132,6 +161,14 @@ def main() -> int:
                 soonest = 0  # un-decodable token -> force refresh
                 break
             if soonest is None or exp < soonest:
+                soonest = exp
+        # Hermes config.yaml token
+        ytok = read_token_yaml(HERMES_CONFIG)
+        if ytok:
+            exp = token_expiry(ytok)
+            if exp == 0:
+                soonest = 0
+            elif soonest is None or exp < soonest:
                 soonest = exp
 
         if soonest is not None and soonest > now + REFRESH_WINDOW_DAYS * 86400:
@@ -150,16 +187,19 @@ def main() -> int:
 
     new_exp = token_expiry(new_token)
     updated = [p for p in TARGETS if rewrite_token(p, new_token)]
+    if rewrite_token_yaml(HERMES_CONFIG, new_token):
+        updated.append(HERMES_CONFIG)
 
     if not updated:
-        print("ERROR: no target mcp.json had a TASKS_API_TOKEN to update", file=sys.stderr)
+        print("ERROR: no target config had a TASKS_API_TOKEN to update", file=sys.stderr)
         return 1
 
     exp_str = time.strftime("%Y-%m-%d", time.gmtime(new_exp)) if new_exp else "unknown"
     print(f"Tasks Tracker token refreshed in: {', '.join(updated)}")
     print(f"New token expires {exp_str} (30 days).")
     print("Action needed: restart the tasks-tracker MCP server in VS Code "
-          "(Copilot Chat -> Configure Tools -> restart icon, or accept VS Code's reload prompt).")
+          "(restart icon or accept the reload prompt). In Hermes, run /reload-mcp "
+          "or start a new session to pick up the new token.")
     return 0
 
 

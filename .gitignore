@@ -19,3 +19,6 @@ data/*.db-shm
 # OS
 .DS_Store
 mcp_server/.venv/
+
+# VS Code MCP config (contains a live API token — do not commit)
+.vscode/mcp.json

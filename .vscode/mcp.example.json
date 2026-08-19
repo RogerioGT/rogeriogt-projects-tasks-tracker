@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "tasks_tracker": {
+      "type": "stdio",
+      "command": "/home/leyo/Documents/rogeriogt-projects-tasks-tracker/mcp_server/.venv/bin/python",
+      "args": [
+        "/home/leyo/Documents/rogeriogt-projects-tasks-tracker/mcp_server/server.py"
+      ],
+      "env": {
+        "TASKS_API_URL": "https://tasksmgr.rogeriogt.com",
+        "TASKS_API_TOKEN": "PASTE_YOUR_TOKEN_HERE"
+      }
+    }
+  }
+}

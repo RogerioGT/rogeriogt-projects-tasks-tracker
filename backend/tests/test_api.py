@@ -468,6 +468,28 @@ def main():
         # rename workspace
         assert c.patch(f"/api/workspaces/{ws2}", json={"name": "Board 2 v2"}, headers=admin).status_code == 200
 
+        # ── Multi-user workspace isolation (regression for Matilda setup) ─
+        # a non-admin can create their own workspace, sees it (even empty),
+        # and can add boards to it — but NOT into someone else's workspace.
+        r = c.post("/api/workspaces", json={"name": "Bobs Board"}, headers=bob)
+        assert r.status_code == 201, r.text
+        bob_ws = r.json()["id"]
+        # bob sees his own (empty) workspace
+        bob_visible = {w["id"] for w in c.get("/api/workspaces", headers=bob).json()}
+        assert bob_ws in bob_visible, "creator must see their own empty workspace"
+        # bob can add a section to his own workspace
+        r = c.post("/api/boards", json={"name": "Bobs section", "kind": "section", "workspace_id": bob_ws}, headers=bob)
+        assert r.status_code == 201, r.text
+        # bob CANNOT add a board into the admin's workspace
+        r = c.post("/api/boards", json={"name": "intrusion", "kind": "section", "workspace_id": main_ws}, headers=bob)
+        assert r.status_code == 403, "non-admin must not add boards to another user's workspace"
+        # bob cannot create a board in ws2 (not his)
+        r = c.post("/api/boards", json={"name": "intrusion2", "kind": "section", "workspace_id": ws2}, headers=bob)
+        assert r.status_code == 403
+        # cleanup: delete bob's workspace so later "last workspace" checks hold
+        c.delete(f"/api/workspaces/{bob_ws}", headers=bob)
+        c.delete(f"/api/workspaces/trash/{bob_ws}", headers=admin)
+
         # ── Assignees endpoint ─────────────────────────────────────
         # share ws2 section with bob (view) -> bob appears as assignee
         c.post(f"/api/boards/{ws2_sec}/acl", json={"user_id": bob_id, "permission": "edit"}, headers=admin)

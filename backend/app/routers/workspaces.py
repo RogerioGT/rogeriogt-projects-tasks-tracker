@@ -82,10 +82,12 @@ def list_workspaces(db: Session = Depends(get_db), user: User = Depends(get_curr
     if is_local_mode() or user.is_admin:
         visible = ws_list
     else:
-        # non-admins see workspaces that contain at least one board they can see
+        # non-admins see workspaces they created (even empty ones) plus any
+        # workspace containing at least one board they can see.
         boards = db.scalars(select(Board).where(Board.deleted_at.is_(None))).all()
         visible_ids = visible_board_ids(db, user) or set()
         allowed = {b.workspace_id for b in boards if b.id in visible_ids}
+        allowed |= {w.id for w in ws_list if w.created_by == user.id}
         visible = [w for w in ws_list if w.id in allowed]
     counts = _workspace_counts(db, [w.id for w in ws_list])
     return [

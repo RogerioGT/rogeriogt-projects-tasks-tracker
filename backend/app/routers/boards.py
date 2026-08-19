@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..access import board_permission, visible_board_ids
 from ..db import get_db
-from ..deps import get_current_user
+from ..deps import get_current_user, is_local_mode
 from ..models import Board, BoardAcl, Event, Task, TaskAcl, User, Workspace
 from ..schemas import BoardCreate, BoardKindChange, BoardMove, BoardOut, BoardUpdate
 
@@ -126,6 +126,9 @@ def create_board(payload: BoardCreate, db: Session = Depends(get_db), user: User
         ws = db.get(Workspace, payload.workspace_id)
         if not ws or ws.deleted_at is not None:
             raise HTTPException(404, "workspace not found")
+        # a top-level board goes into the user's OWN workspace (or admin anywhere)
+        if not is_local_mode() and not user.is_admin and ws.created_by != user.id:
+            raise HTTPException(403, "you can only add boards to your own main board")
         workspace_id = ws.id
     else:
         from .workspaces import _ensure_default_workspace

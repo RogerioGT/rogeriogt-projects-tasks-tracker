@@ -295,7 +295,7 @@ function Column({
   const rowVirtualizer = useVirtualizer({
     count: active.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 34,
+    estimateSize: () => 34, // initial guess only — real heights (incl. expanded editors) come from measureElement below
     overscan: 8,
   });
 
@@ -321,7 +321,12 @@ function Column({
             {rowVirtualizer.getVirtualItems().map((vi) => {
               const task = active[vi.index];
               return (
-                <div key={task.id} style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vi.start}px)`, paddingBottom: 4 }}>
+                <div
+                  key={task.id}
+                  data-index={vi.index}
+                  ref={rowVirtualizer.measureElement}
+                  style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vi.start}px)`, paddingBottom: 4 }}
+                >
                   <TaskRow task={task} onToggle={() => toggleMut.mutate(task.id)} onUpdate={(patch) => updateMut.mutate({ id: task.id, patch })} onDelete={() => deleteTaskMut.mutate(task.id)} onShare={() => setTaskShareId(task.id)} onConvert={() => { if (confirm(t("convertConfirm"))) convertMut.mutate(task.id); }} canEdit={canEdit} />
                 </div>
               );
